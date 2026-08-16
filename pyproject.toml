@@ -1,12 +1,12 @@
 [project]
 name = "atosaac-virtual-partner"
 version = "0.1.0"
-description = "Add your description here"
+description = "A local AI virtual companion for macOS."
 readme = "README.md"
 authors = [
     { name = "atosaac", email = "165299099+atosaac@users.noreply.github.com" }
 ]
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.12"
 dependencies = []
 
 [project.scripts]
@@ -15,3 +15,8 @@ atosaac-virtual-partner = "atosaac_virtual_partner:main"
 [build-system]
 requires = ["uv_build>=0.12.5,<0.13.0"]
 build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
