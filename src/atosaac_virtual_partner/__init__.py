@@ -1,2 +1,6 @@
+from .health import build_health_report
+
+
 def main() -> None:
-    print("Hello from atosaac-virtual-partner!")
+    report = build_health_report()
+    print(report)
