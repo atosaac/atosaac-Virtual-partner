@@ -10,7 +10,7 @@ requires-python = ">=3.11,<3.12"
 dependencies = []
 
 [project.scripts]
-atosaac-virtual-partner = "atosaac_virtual_partner:main"
+atosaac-virtual-partner = "atosaac_virtual_partner.cli:main"
 
 [build-system]
 requires = ["uv_build>=0.12.5,<0.13.0"]
