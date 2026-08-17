@@ -32,11 +32,14 @@ atosaac-virtual-partner chat
 - `health` reports local environment information.
 - `chat` uses `ConversationService` to combine a versioned character profile,
   in-memory message history, and a small reply-provider protocol.
-- The built-in profile is a concise runtime form of the reviewed atosaac v0.25
+- The built-in profile is a concise runtime form of the reviewed atosaac v0.26
   design. An external Markdown profile can be selected for a chat session.
 - The deterministic local mock provider validates the flow but does not yet
   exhibit the supplied character behavior.
-- No real LLM, memory store, audio pipeline, avatar, or cloud service is connected
+- An optional Ollama reply provider sends the character instructions and complete
+  in-memory conversation to a configurable local Chat API. It currently waits for
+  a complete, non-streaming response.
+- No persistent memory store, audio pipeline, avatar, or cloud service is connected
   yet.
 
 ## Architecture direction
@@ -72,9 +75,9 @@ ASR（自动语音识别）把用户说话的音频转换成文本。TTS（文�
 ### Phase 1: text foundation
 
 - Stabilize the CLI conversation loop and exit/error behavior.
-- Add a configurable real-model implementation behind the existing reply-provider
-  protocol.
 - Add explicit streaming and cancellation semantics to replies.
+- Record provider latency and token metrics without storing private message
+  content in logs.
 - Add session persistence only after retention and deletion behavior is defined.
 
 ### Phase 2: memory and character
@@ -102,6 +105,13 @@ ASR（自动语音识别）把用户说话的音频转换成文本。TTS（文�
 
 - Evaluate whether prompt design, retrieval, or fine-tuning best addresses measured
   shortcomings.
+- Build reviewed typo-and-slip datasets: preferred replies should understand an
+  obvious intended meaning and may tease briefly in light contexts; rejected
+  replies should capture mechanical correction, excessive mockery, and unsafe
+  guessing when the meaning matters.
+- Split typo patterns between training and held-out evaluation rather than randomly
+  splitting near-duplicate sentences. Measure unseen-error generalization together
+  with memory fabrication, so copying a prompt example does not count as success.
 - Use cloud GPU resources only after datasets, evaluations, privacy rules, and cost
   limits are defined.
 

@@ -2,10 +2,10 @@
 
 ## Current files
 
-- `docs/character/ATOSAAC_PERSONA_V0.25.md` is the complete human-authored design
+- `docs/character/ATOSAAC_PERSONA_V0.26.md` is the complete human-authored design
   source. It includes examples and rejected behaviors for review and future
   evaluation; it is not automatically approved as training data.
-- `src/atosaac_virtual_partner/characters/atosaac_v0.25.md` is the concise runtime
+- `src/atosaac_virtual_partner/characters/atosaac_v0.26.md` is the concise runtime
   profile passed to reply providers.
 - `CharacterProfile` is an immutable value containing a name, version,
   instructions, and source.

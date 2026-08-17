@@ -5,8 +5,8 @@ from pathlib import Path
 
 
 DEFAULT_CHARACTER_NAME = "atosaac"
-DEFAULT_CHARACTER_VERSION = "0.25"
-DEFAULT_CHARACTER_FILENAME = "atosaac_v0.25.md"
+DEFAULT_CHARACTER_VERSION = "0.26"
+DEFAULT_CHARACTER_FILENAME = "atosaac_v0.26.md"
 _VERSIONED_HEADING = re.compile(
     r"^#\s+(?P<name>.+?)\s+v(?P<version>[0-9][0-9A-Za-z._-]*)\s*$",
     re.MULTILINE,

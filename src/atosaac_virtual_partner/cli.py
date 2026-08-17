@@ -5,6 +5,11 @@ from pathlib import Path
 from .character import CharacterLoadError, load_character
 from .chat import run_chat
 from .health import build_health_report
+from .providers import DEFAULT_OLLAMA_URL, OllamaReplyProvider
+from .reply import MockReplyProvider, ReplyProvider
+
+
+PROVIDER_NAMES = ("mock", "ollama")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -30,8 +35,41 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="Load an external Markdown character profile.",
     )
+    chat_parser.add_argument(
+        "--provider",
+        choices=PROVIDER_NAMES,
+        default="mock",
+        help="Reply provider to use (default: mock).",
+    )
+    chat_parser.add_argument(
+        "--model",
+        help=(
+            "Model name required by the Ollama provider, "
+            "for example qwen3:4b-instruct."
+        ),
+    )
+    chat_parser.add_argument(
+        "--ollama-url",
+        default=DEFAULT_OLLAMA_URL,
+        help=f"Ollama server URL (default: {DEFAULT_OLLAMA_URL}).",
+    )
 
     return parser
+
+
+def build_reply_provider(
+    provider_name: str,
+    model: str | None,
+    ollama_url: str,
+) -> ReplyProvider:
+    """Build a configured provider without coupling it to the chat loop."""
+    if provider_name == "mock":
+        return MockReplyProvider()
+    if provider_name == "ollama":
+        if model is None or not model.strip():
+            raise ValueError("--model is required when --provider ollama is used")
+        return OllamaReplyProvider(model=model, base_url=ollama_url)
+    raise ValueError(f"Unknown reply provider: {provider_name}")
 
 
 def main(argv: Sequence[str] | None = None) -> None:
@@ -46,6 +84,14 @@ def main(argv: Sequence[str] | None = None) -> None:
     if args.command == "chat":
         try:
             character = load_character(args.character_file)
-        except CharacterLoadError as exc:
+            reply_provider = build_reply_provider(
+                provider_name=args.provider,
+                model=args.model,
+                ollama_url=args.ollama_url,
+            )
+        except (CharacterLoadError, ValueError) as exc:
             parser.error(str(exc))
-        run_chat(character_profile=character)
+        run_chat(
+            character_profile=character,
+            reply_provider=reply_provider,
+        )

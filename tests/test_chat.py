@@ -4,10 +4,13 @@ import pytest
 
 from atosaac_virtual_partner.chat import (
     GOODBYE_MESSAGE,
+    REPLY_ERROR_PREFIX,
     WELCOME_MESSAGE,
     run_chat,
 )
+from atosaac_virtual_partner.character import CharacterProfile
 from atosaac_virtual_partner.message import Message
+from atosaac_virtual_partner.reply import ReplyProviderError
 
 
 def test_run_chat_replies_until_user_exits() -> None:
@@ -24,7 +27,7 @@ def test_run_chat_replies_until_user_exits() -> None:
     assert prompts == ["You: ", "You: ", "You: "]
     assert output == [
         WELCOME_MESSAGE,
-        "Virtual Partner: 我听到了：你好",
+        "atosaac: 我听到了：你好",
         GOODBYE_MESSAGE,
     ]
 
@@ -57,7 +60,7 @@ def test_run_chat_only_exits_on_an_exact_command() -> None:
 
     assert output == [
         WELCOME_MESSAGE,
-        "Virtual Partner: 我听到了：exit now",
+        "atosaac: 我听到了：exit now",
         GOODBYE_MESSAGE,
     ]
 
@@ -95,6 +98,57 @@ def test_run_chat_uses_injected_reply_provider() -> None:
     assert provider.received_contexts[0][-1].content == "你好"
     assert output == [
         WELCOME_MESSAGE,
-        "Virtual Partner: 这是测试回复",
+        "atosaac: 这是测试回复",
+        GOODBYE_MESSAGE,
+    ]
+
+
+def test_run_chat_uses_current_character_name_as_speaker() -> None:
+    answers: Iterator[str] = iter(["你好", "退出"])
+    output: list[str] = []
+    character = CharacterProfile(
+        name="Nova",
+        version="1.0",
+        instructions="Be curious.",
+        source="test",
+    )
+
+    run_chat(
+        input_func=lambda _prompt: next(answers),
+        output_func=output.append,
+        character_profile=character,
+    )
+
+    assert output == [
+        "Nova: 你好！输入“退出”可以结束聊天。",
+        "Nova: 我听到了：你好",
+        "Nova: 下次见。",
+    ]
+
+
+def test_run_chat_continues_after_reply_provider_error() -> None:
+    answers: Iterator[str] = iter(["第一次", "第二次", "退出"])
+    output: list[str] = []
+
+    class RecoveringReplyProvider:
+        def __init__(self) -> None:
+            self.call_count = 0
+
+        def generate_reply(self, _messages: Sequence[Message]) -> str:
+            self.call_count += 1
+            if self.call_count == 1:
+                raise ReplyProviderError("temporary failure")
+            return "恢复了"
+
+    run_chat(
+        input_func=lambda _prompt: next(answers),
+        output_func=output.append,
+        reply_provider=RecoveringReplyProvider(),
+    )
+
+    assert output == [
+        WELCOME_MESSAGE,
+        f"{REPLY_ERROR_PREFIX}temporary failure",
+        "atosaac: 恢复了",
         GOODBYE_MESSAGE,
     ]

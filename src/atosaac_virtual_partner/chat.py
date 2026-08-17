@@ -1,13 +1,21 @@
 from collections.abc import Callable
 
-from .character import CharacterProfile, load_default_character
+from .character import (
+    DEFAULT_CHARACTER_NAME,
+    CharacterProfile,
+    load_default_character,
+)
 from .conversation import ConversationService
-from .reply import MockReplyProvider, ReplyProvider
+from .reply import MockReplyProvider, ReplyProvider, ReplyProviderError
 
 
 EXIT_COMMANDS = frozenset({"exit", "quit", "退出"})
-WELCOME_MESSAGE = "Virtual Partner: 你好！输入“退出”可以结束聊天。"
-GOODBYE_MESSAGE = "Virtual Partner: 下次见。"
+WELCOME_TEXT = "你好！输入“退出”可以结束聊天。"
+GOODBYE_TEXT = "下次见。"
+REPLY_ERROR_TEXT = "回复失败："
+WELCOME_MESSAGE = f"{DEFAULT_CHARACTER_NAME}: {WELCOME_TEXT}"
+GOODBYE_MESSAGE = f"{DEFAULT_CHARACTER_NAME}: {GOODBYE_TEXT}"
+REPLY_ERROR_PREFIX = f"{DEFAULT_CHARACTER_NAME}: {REPLY_ERROR_TEXT}"
 
 
 def run_chat(
@@ -25,21 +33,25 @@ def run_chat(
     )
     conversation = ConversationService(provider, character)
 
-    write(WELCOME_MESSAGE)
+    write(f"{character.name}: {WELCOME_TEXT}")
 
     while True:
         try:
             user_text = read("You: ").strip()
         except (EOFError, KeyboardInterrupt):
-            write(GOODBYE_MESSAGE)
+            write(f"{character.name}: {GOODBYE_TEXT}")
             return
 
         if not user_text:
             continue
 
         if user_text.casefold() in EXIT_COMMANDS:
-            write(GOODBYE_MESSAGE)
+            write(f"{character.name}: {GOODBYE_TEXT}")
             return
 
-        reply = conversation.respond(user_text)
-        write(f"Virtual Partner: {reply}")
+        try:
+            reply = conversation.respond(user_text)
+        except ReplyProviderError as exc:
+            write(f"{character.name}: {REPLY_ERROR_TEXT}{exc}")
+            continue
+        write(f"{character.name}: {reply}")

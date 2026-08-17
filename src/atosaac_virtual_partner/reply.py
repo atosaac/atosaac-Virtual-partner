@@ -4,6 +4,10 @@ from typing import Protocol
 from .message import Message, MessageRole
 
 
+class ReplyProviderError(RuntimeError):
+    """Raised when a reply provider cannot generate a usable response."""
+
+
 class ReplyProvider(Protocol):
     """Define the reply behavior required by a conversation interface."""
 
