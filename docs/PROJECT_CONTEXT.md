@@ -76,6 +76,24 @@ Recommended boundaries as features are introduced:
 7. **Tool gateway** validates model-requested capabilities such as weather before
    dispatching them to small, replaceable adapters.
 
+### Independent design and measurable optimization
+
+External projects are references for understanding solved problems, failure modes,
+and useful interfaces; they are not default implementation templates. For each
+substantial component, first state the product constraint and likely bottleneck,
+then compare viable designs and implement the smallest independently reasoned
+solution that can be tested.
+
+Optimization should target evidence such as lower first-response latency, fewer
+unnecessary model calls, better throughput, lower memory use, stronger privacy, or
+clearer failure recovery. Capture a baseline before performance work and compare
+the result afterward. A different implementation is valuable when it produces a
+measurable benefit or a cleaner boundary, not merely because it is novel.
+
+When external code is reused, record its source and license, keep attribution, and
+adapt it behind a replaceable interface. Experiments should retain a known-good
+fallback and must not weaken tests, privacy controls, or data ownership.
+
 Realtime data must not mean giving the model unrestricted network access. The
 intended flow is:
 
