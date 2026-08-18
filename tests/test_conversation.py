@@ -201,3 +201,47 @@ def test_conversation_sends_recent_turns_but_preserves_complete_history() -> Non
         Message(MessageRole.USER, "message 4"),
         Message(MessageRole.ASSISTANT, "reply 4"),
     )
+
+
+def test_conversation_records_initiative_event_for_follow_up_context() -> None:
+    provider = RecordingReplyProvider((("主动问题",), ("继续回复",)))
+    conversation = ConversationService(provider, build_character())
+
+    assert conversation.initiate("The user has been quiet.") == "主动问题"
+    assert conversation.respond("我的答案") == "继续回复"
+
+    event = Message(MessageRole.EVENT, "The user has been quiet.")
+    assert provider.contexts[0][-1] == event
+    assert provider.contexts[1][-3:] == (
+        event,
+        Message(MessageRole.ASSISTANT, "主动问题"),
+        Message(MessageRole.USER, "我的答案"),
+    )
+    assert tuple(conversation.history) == (
+        event,
+        Message(MessageRole.ASSISTANT, "主动问题"),
+        Message(MessageRole.USER, "我的答案"),
+        Message(MessageRole.ASSISTANT, "继续回复"),
+    )
+
+
+def test_failed_initiative_does_not_record_event_or_partial_reply() -> None:
+    class FailingInitiativeProvider:
+        def stream_reply(
+            self,
+            _messages: Sequence[Message],
+            cancellation_token: CancellationToken | None = None,
+            metrics_callback: MetricsCallback | None = None,
+        ) -> Iterator[str]:
+            yield "没说完"
+            raise ReplyProviderError("initiative failed")
+
+    conversation = ConversationService(
+        FailingInitiativeProvider(),
+        build_character(),
+    )
+
+    with pytest.raises(ReplyProviderError, match="initiative failed"):
+        list(conversation.stream_initiative("idle event"))
+
+    assert tuple(conversation.history) == ()

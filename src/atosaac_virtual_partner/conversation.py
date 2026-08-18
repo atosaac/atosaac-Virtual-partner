@@ -50,6 +50,26 @@ class ConversationService:
         if not normalized_text:
             raise ValueError("User text cannot be empty")
 
+        user_message = Message(MessageRole.USER, normalized_text)
+        yield from self._stream_turn(user_message, cancellation_token)
+
+    def stream_initiative(
+        self,
+        event_instructions: str,
+        cancellation_token: CancellationToken | None = None,
+    ) -> Iterator[str]:
+        """Yield an application-triggered reply and preserve its event context."""
+        normalized_instructions = event_instructions.strip()
+        if not normalized_instructions:
+            raise ValueError("Initiative event instructions cannot be empty")
+        event_message = Message(MessageRole.EVENT, normalized_instructions)
+        yield from self._stream_turn(event_message, cancellation_token)
+
+    def _stream_turn(
+        self,
+        trigger_message: Message,
+        cancellation_token: CancellationToken | None,
+    ) -> Iterator[str]:
         token = cancellation_token or CancellationToken()
         token.raise_if_cancelled()
         self._last_metrics = None
@@ -61,7 +81,6 @@ class ConversationService:
             nonlocal provider_metrics
             provider_metrics = metrics
 
-        user_message = Message(MessageRole.USER, normalized_text)
         selected_history = self._context_window_policy.select_history(self._history)
         context = (
             Message(MessageRole.SYSTEM, self._character.instructions),
@@ -70,7 +89,7 @@ class ConversationService:
                 self._runtime_grounding.system_instructions(),
             ),
             *selected_history,
-            user_message,
+            trigger_message,
         )
         reply_chunks: list[str] = []
         for chunk in self._reply_provider.stream_reply(
@@ -99,7 +118,7 @@ class ConversationService:
 
         self._history.extend(
             (
-                user_message,
+                trigger_message,
                 Message(MessageRole.ASSISTANT, reply_text),
             )
         )
@@ -118,6 +137,19 @@ class ConversationService:
         return "".join(
             self.stream_response(
                 user_text,
+                cancellation_token=cancellation_token,
+            )
+        ).strip()
+
+    def initiate(
+        self,
+        event_instructions: str,
+        cancellation_token: CancellationToken | None = None,
+    ) -> str:
+        """Return one complete application-triggered reply."""
+        return "".join(
+            self.stream_initiative(
+                event_instructions,
                 cancellation_token=cancellation_token,
             )
         ).strip()

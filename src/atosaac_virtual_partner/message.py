@@ -6,6 +6,7 @@ class MessageRole(StrEnum):
     SYSTEM = "system"
     USER = "user"
     ASSISTANT = "assistant"
+    EVENT = "event"
 
 
 @dataclass(frozen=True, slots=True)

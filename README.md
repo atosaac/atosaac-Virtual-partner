@@ -112,6 +112,20 @@ uv run atosaac-virtual-partner chat \
   --model qwen3:4b-instruct
 ```
 
+实验性主动对话默认关闭。需要测试“沉默后由 atosaac 主动开口”时，可以设置空闲
+秒数，例如 60 秒：
+
+```bash
+uv run atosaac-virtual-partner chat \
+  --provider ollama \
+  --model qwen3:4b-instruct \
+  --idle-initiative-seconds 60
+```
+
+达到空闲时间后最多主动回复一次；在用户再次输入前不会连续催促。用户输入后重新
+开始计时。主动回复和触发它的应用事件会留在当前会话历史中，因此后续回答可以承接
+她刚才提出的问题。该功能目前只影响文本，不会自动启用 TTS。
+
 需要观察性能时，可以临时显示不含聊天正文的指标：
 
 ```bash
@@ -196,6 +210,8 @@ uv run pytest -v
 - 尚未接入天气等实时数据工具；未来模型只能通过受权限控制的工具接口发起查询。
 - 角色 v0.27 已声明当前记忆和工具边界，但提示词不能从数学上保证模型永不犯错；
   合成行为案例会继续用于人工回归和后续自动评估。
+- 空闲主动对话必须通过 `--idle-initiative-seconds` 显式启用；当前 CLI 没有安静
+  时段、日程感知或桌面通知权限。
 - 回复指标当前只在使用 `--show-metrics` 时显示，不会持久化或保存聊天内容。
 - 尚未实现 ASR、TTS、长期记忆、多模态和 Live2D。
 

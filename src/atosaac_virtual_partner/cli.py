@@ -5,6 +5,7 @@ from pathlib import Path
 from .character import CharacterLoadError, load_character
 from .chat import run_chat
 from .health import build_health_report
+from .initiative import IdleInitiativePolicy
 from .providers import DEFAULT_OLLAMA_URL, OllamaReplyProvider
 from .reply import MockReplyProvider, ReplyProvider
 
@@ -58,6 +59,14 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Show latency and token metrics after each successful reply.",
     )
+    chat_parser.add_argument(
+        "--idle-initiative-seconds",
+        type=float,
+        help=(
+            "Let the character speak once after this many idle seconds "
+            "(disabled by default)."
+        ),
+    )
 
     return parser
 
@@ -94,10 +103,16 @@ def main(argv: Sequence[str] | None = None) -> None:
                 model=args.model,
                 ollama_url=args.ollama_url,
             )
+            initiative_policy = (
+                None
+                if args.idle_initiative_seconds is None
+                else IdleInitiativePolicy(args.idle_initiative_seconds)
+            )
         except (CharacterLoadError, ValueError) as exc:
             parser.error(str(exc))
         run_chat(
             character_profile=character,
             reply_provider=reply_provider,
             show_metrics=args.show_metrics,
+            initiative_policy=initiative_policy,
         )

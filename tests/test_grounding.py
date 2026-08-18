@@ -10,6 +10,8 @@ def test_default_grounding_reports_actual_missing_capabilities() -> None:
     assert "当前没有可用工具或实时数据" in instructions
     assert "禁止声称看过天气" in instructions
     assert "默认只用“你”" in instructions
+    assert "不得声称自己在现实中吃过、见过或听说某事" in instructions
+    assert "不得用“又”“上次”等词预设" in instructions
 
 
 def test_grounding_names_only_explicitly_enabled_capabilities() -> None:

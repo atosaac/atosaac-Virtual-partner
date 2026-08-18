@@ -38,15 +38,18 @@ class RecentTurnsContextPolicy:
         messages = tuple(history)
         if not messages:
             return ()
-        if messages[0].role is not MessageRole.USER:
-            raise ValueError("Conversation history must start with a user message")
+        turn_roles = {MessageRole.USER, MessageRole.EVENT}
+        if messages[0].role not in turn_roles:
+            raise ValueError(
+                "Conversation history must start with a user message or event"
+            )
         if any(message.role is MessageRole.SYSTEM for message in messages):
             raise ValueError("Conversation history cannot contain system messages")
 
         turn_starts = tuple(
             index
             for index, message in enumerate(messages)
-            if message.role is MessageRole.USER
+            if message.role in turn_roles
         )
         selected_turn = max(0, len(turn_starts) - self.max_turns)
         selected_start = turn_starts[selected_turn]

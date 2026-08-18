@@ -68,3 +68,16 @@ def test_recent_turns_policy_rejects_system_messages_in_history() -> None:
 
     with pytest.raises(ValueError, match="system messages"):
         RecentTurnsContextPolicy().select_history(invalid_history)
+
+
+def test_recent_turns_policy_treats_application_event_as_a_turn_start() -> None:
+    history = (
+        Message(MessageRole.USER, "user 1"),
+        Message(MessageRole.ASSISTANT, "assistant 1"),
+        Message(MessageRole.EVENT, "idle event"),
+        Message(MessageRole.ASSISTANT, "initiative 1"),
+    )
+
+    selected = RecentTurnsContextPolicy(max_turns=1).select_history(history)
+
+    assert selected == history[-2:]
