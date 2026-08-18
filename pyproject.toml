@@ -1,6 +1,6 @@
 [project]
 name = "atosaac-virtual-partner"
-version = "0.1.0"
+version = "0.2.0"
 description = "A local AI virtual companion for macOS."
 readme = "README.md"
 authors = [

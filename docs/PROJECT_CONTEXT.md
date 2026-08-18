@@ -51,6 +51,11 @@ atosaac-virtual-partner chat
   and contain no prompt, reply, or character text.
 - No persistent memory store, realtime-data tool gateway, audio pipeline, avatar,
   or cloud service is connected yet.
+- An **experimental TTS baseline** now exposes a `speak` CLI command through a
+  replaceable `SpeechSynthesizer` protocol and macOS `say`. It only validates the
+  text-to-audio boundary: it does not train or clone a voice, does not speak chat
+  replies automatically, and is not the final audio architecture. See
+  `docs/TTS_EXPERIMENT.md` before extending it.
 
 ## Architecture direction
 
@@ -152,6 +157,8 @@ ASR（自动语音识别）把用户说话的音频转换成文本。TTS（文�
 
 ### Phase 3: voice
 
+- Keep the existing macOS `say` path explicitly experimental and available as a
+  fallback while comparing custom local inference providers.
 - Add replaceable ASR and TTS adapters.
 - Build interruption, latency, device-selection, and audio-failure handling.
 - Keep raw recordings local and out of Git by default.

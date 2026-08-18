@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 import atosaac_virtual_partner
@@ -5,12 +7,35 @@ from atosaac_virtual_partner import cli
 from atosaac_virtual_partner.character import CharacterProfile
 from atosaac_virtual_partner.providers import OllamaReplyProvider
 from atosaac_virtual_partner.reply import MockReplyProvider, ReplyProvider
+from atosaac_virtual_partner.tts import SpeechSynthesizer
 
 
 def test_health_command_prints_report(capsys) -> None:
     cli.main(["health"])
 
     assert "Status: ready" in capsys.readouterr().out
+
+
+def test_speak_command_uses_local_tts_provider(monkeypatch, tmp_path, capsys) -> None:
+    calls: list[tuple[str, Path | None]] = []
+    output = tmp_path / "voice.aiff"
+
+    class RecordingSynthesizer:
+        def synthesize(self, text: str, output_path: Path | None = None):
+            calls.append((text, output_path))
+            return output_path
+
+    def build(voice: str, rate: int) -> SpeechSynthesizer:
+        assert voice == "Tingting"
+        assert rate == 210
+        return RecordingSynthesizer()
+
+    monkeypatch.setattr(cli, "build_speech_synthesizer", build)
+
+    cli.main(["speak", "你好", "--rate", "210", "--output", str(output)])
+
+    assert calls == [("你好", output)]
+    assert str(output) in capsys.readouterr().out
 
 
 def test_chat_command_starts_chat(monkeypatch) -> None:

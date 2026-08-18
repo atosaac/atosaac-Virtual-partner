@@ -7,6 +7,13 @@ from .chat import run_chat
 from .health import build_health_report
 from .providers import DEFAULT_OLLAMA_URL, OllamaReplyProvider
 from .reply import MockReplyProvider, ReplyProvider
+from .tts import (
+    DEFAULT_MACOS_VOICE,
+    DEFAULT_SPEECH_RATE,
+    MacOSSaySynthesizer,
+    SpeechSynthesisError,
+    SpeechSynthesizer,
+)
 
 
 PROVIDER_NAMES = ("mock", "ollama")
@@ -58,6 +65,27 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Show latency and token metrics after each successful reply.",
     )
+    speak_parser = subcommands.add_parser(
+        "speak",
+        help="Try the experimental local macOS TTS baseline.",
+    )
+    speak_parser.add_argument("text", help="Text to speak.")
+    speak_parser.add_argument(
+        "--voice",
+        default=DEFAULT_MACOS_VOICE,
+        help=f"Installed macOS voice name (default: {DEFAULT_MACOS_VOICE}).",
+    )
+    speak_parser.add_argument(
+        "--rate",
+        type=int,
+        default=DEFAULT_SPEECH_RATE,
+        help=f"Speech rate from 80 to 500 (default: {DEFAULT_SPEECH_RATE}).",
+    )
+    speak_parser.add_argument(
+        "--output",
+        type=Path,
+        help="Save to .aiff/.aif/.aifc/.caf instead of playing immediately.",
+    )
 
     return parser
 
@@ -77,6 +105,11 @@ def build_reply_provider(
     raise ValueError(f"Unknown reply provider: {provider_name}")
 
 
+def build_speech_synthesizer(voice: str, rate: int) -> SpeechSynthesizer:
+    """Build the experimental TTS provider behind a replaceable protocol."""
+    return MacOSSaySynthesizer(voice=voice, rate=rate)
+
+
 def main(argv: Sequence[str] | None = None) -> None:
     """Run the selected Virtual Partner command."""
     parser = build_parser()
@@ -84,6 +117,16 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     if args.command == "health":
         print(build_health_report())
+        return
+
+    if args.command == "speak":
+        try:
+            synthesizer = build_speech_synthesizer(args.voice, args.rate)
+            output_path = synthesizer.synthesize(args.text, args.output)
+        except SpeechSynthesisError as exc:
+            parser.error(str(exc))
+        if output_path is not None:
+            print(f"语音已生成：{output_path}")
         return
 
     if args.command == "chat":

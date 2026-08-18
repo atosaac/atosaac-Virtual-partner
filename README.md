@@ -166,6 +166,32 @@ API 密钥、私人聊天记录或其他敏感信息。
 当前 mock 只用于验证聊天流程，因此不会真正表现角色性格；角色说明已经进入会话
 上下文，使用 Ollama 等真实回复提供者后才会影响生成结果。
 
+## 本地 TTS 实验（尚未定型）
+
+TTS（文本转语音）把文字合成为可播放的语音。项目先通过可替换的
+`SpeechSynthesizer` 接口接入 macOS 自带语音，验证完整音频链路，不需要下载模型：
+
+```bash
+# 直接使用系统中文音色播放
+uv run atosaac-virtual-partner speak "你好，这是本地语音测试。"
+
+# 调整音色与语速
+uv run atosaac-virtual-partner speak "今天也一起加油吧。" \
+  --voice Tingting --rate 210
+
+# 保存为音频文件而不立即播放
+uv run atosaac-virtual-partner speak "这是一条测试语音。" \
+  --output /private/tmp/virtual-partner-test.aiff
+```
+
+使用 `say -v '?'` 可以查看这台 Mac 已安装的系统音色。系统音色只是零依赖回退方案，
+不是角色音色克隆。后续会把 MLX-Audio 等本机推理服务放在独立环境中，通过同一接口
+替换；原始录音、参考音频、训练数据和模型权重不进入 Git。
+
+这部分明确属于 **TTS 尝试**：目前没有训练模型、没有克隆人物音色、没有接入聊天
+自动朗读，也不代表最终语音架构。实验范围和接手说明见
+[`docs/TTS_EXPERIMENT.md`](docs/TTS_EXPERIMENT.md)。
+
 无论使用内置还是外部角色文件，应用都会额外提供一小段“当前运行事实”。它只声明
 本次真正可用的记忆、工具和称呼偏好。当前版本没有持久记忆或天气工具，因此模型不应
 声称记得未提供的往事、看过天气预报或擅自使用家长称呼。以后接入能力时由应用更新
