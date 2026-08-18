@@ -1,7 +1,9 @@
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
+from time import perf_counter
 
 from .character import CharacterProfile
 from .message import Message, MessageRole
+from .metrics import ProviderMetrics, ReplyMetrics
 from .reply import CancellationToken, ReplyProvider
 
 
@@ -12,10 +14,13 @@ class ConversationService:
         self,
         reply_provider: ReplyProvider,
         character: CharacterProfile,
+        clock: Callable[[], float] = perf_counter,
     ) -> None:
         self._reply_provider = reply_provider
         self._character = character
+        self._clock = clock
         self._history: list[Message] = []
+        self._last_metrics: ReplyMetrics | None = None
 
     @property
     def character(self) -> CharacterProfile:
@@ -24,6 +29,10 @@ class ConversationService:
     @property
     def history(self) -> Sequence[Message]:
         return tuple(self._history)
+
+    @property
+    def last_metrics(self) -> ReplyMetrics | None:
+        return self._last_metrics
 
     def stream_response(
         self,
@@ -37,6 +46,15 @@ class ConversationService:
 
         token = cancellation_token or CancellationToken()
         token.raise_if_cancelled()
+        self._last_metrics = None
+        started_at = self._clock()
+        first_text_seconds: float | None = None
+        provider_metrics: ProviderMetrics | None = None
+
+        def receive_metrics(metrics: ProviderMetrics) -> None:
+            nonlocal provider_metrics
+            provider_metrics = metrics
+
         user_message = Message(MessageRole.USER, normalized_text)
         context = (
             Message(MessageRole.SYSTEM, self._character.instructions),
@@ -44,12 +62,18 @@ class ConversationService:
             user_message,
         )
         reply_chunks: list[str] = []
-        for chunk in self._reply_provider.stream_reply(context, token):
+        for chunk in self._reply_provider.stream_reply(
+            context,
+            token,
+            metrics_callback=receive_metrics,
+        ):
             token.raise_if_cancelled()
             if not isinstance(chunk, str):
                 raise ValueError("Reply provider yielded a non-text chunk")
             if not chunk:
                 continue
+            if first_text_seconds is None:
+                first_text_seconds = self._clock() - started_at
             reply_chunks.append(chunk)
             yield chunk
 
@@ -57,12 +81,21 @@ class ConversationService:
         reply_text = "".join(reply_chunks).strip()
         if not reply_text:
             raise ValueError("Reply provider returned an empty reply")
+        if first_text_seconds is None:
+            raise ValueError("Reply provider returned no measurable text")
+
+        total_seconds = self._clock() - started_at
 
         self._history.extend(
             (
                 user_message,
                 Message(MessageRole.ASSISTANT, reply_text),
             )
+        )
+        self._last_metrics = ReplyMetrics(
+            first_text_seconds=first_text_seconds,
+            total_seconds=total_seconds,
+            provider=provider_metrics,
         )
 
     def respond(

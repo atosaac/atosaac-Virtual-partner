@@ -112,6 +112,23 @@ uv run atosaac-virtual-partner chat \
   --model qwen3:4b-instruct
 ```
 
+需要观察性能时，可以临时显示不含聊天正文的指标：
+
+```bash
+uv run atosaac-virtual-partner chat \
+  --provider ollama \
+  --model qwen3:4b-instruct \
+  --show-metrics
+```
+
+每次完整回复后会显示类似：
+
+```text
+[指标] 首字 0.42s | 总耗时 1.50s | 输入 100 tokens | 输出 20 tokens | 生成 40.0 tokens/s
+```
+
+指标默认关闭，只保存在当前进程内；不会记录用户输入、模型回复或角色提示词。
+
 如果 Ollama 运行在其他地址，可以显式指定服务根地址或 `/api` 地址：
 
 ```bash
@@ -172,7 +189,8 @@ uv run pytest -v
 - 对话历史目前只保存在当前进程内，退出后不会持久化。
 - macOS CLI 支持用 `Control+C` 取消当前流式回复；尚未接入语音或桌面界面的自动打断事件。
 - 尚未接入天气等实时数据工具；未来模型只能通过受权限控制的工具接口发起查询。
+- 回复指标当前只在使用 `--show-metrics` 时显示，不会持久化或保存聊天内容。
 - 尚未实现 ASR、TTS、长期记忆、多模态和 Live2D。
 
 ASR（自动语音识别）把语音转换成文字；TTS（文本转语音）把角色回复合成为声音。
-下一阶段将记录首字延迟、总耗时和 token 指标，但不在日志中保存私人消息内容。
+下一阶段将定义会话持久化的保留和删除规则，再决定哪些数据可以进入长期记忆。

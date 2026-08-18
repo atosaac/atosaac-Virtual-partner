@@ -1,8 +1,12 @@
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from threading import Event
 from typing import Protocol
 
 from .message import Message, MessageRole
+from .metrics import ProviderMetrics
+
+
+MetricsCallback = Callable[[ProviderMetrics], None]
 
 
 class ReplyProviderError(RuntimeError):
@@ -38,6 +42,7 @@ class ReplyProvider(Protocol):
         self,
         messages: Sequence[Message],
         cancellation_token: CancellationToken | None = None,
+        metrics_callback: MetricsCallback | None = None,
     ) -> Iterator[str]:
         """Yield reply text fragments from the supplied conversation context."""
         ...
@@ -50,12 +55,15 @@ class MockReplyProvider:
         self,
         messages: Sequence[Message],
         cancellation_token: CancellationToken | None = None,
+        metrics_callback: MetricsCallback | None = None,
     ) -> Iterator[str]:
         token = cancellation_token or CancellationToken()
         token.raise_if_cancelled()
         for message in reversed(messages):
             if message.role is MessageRole.USER:
                 yield f"我听到了：{message.content}"
+                if metrics_callback is not None:
+                    metrics_callback(ProviderMetrics(provider_name="mock"))
                 return
         raise ValueError("A user message is required to generate a reply")
 

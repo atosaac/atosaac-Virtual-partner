@@ -5,8 +5,10 @@ import pytest
 from atosaac_virtual_partner.character import CharacterProfile
 from atosaac_virtual_partner.conversation import ConversationService
 from atosaac_virtual_partner.message import Message, MessageRole
+from atosaac_virtual_partner.metrics import ProviderMetrics, ReplyMetrics
 from atosaac_virtual_partner.reply import (
     CancellationToken,
+    MetricsCallback,
     ReplyCancelled,
     ReplyProviderError,
 )
@@ -21,9 +23,19 @@ class RecordingReplyProvider:
         self,
         messages: Sequence[Message],
         cancellation_token: CancellationToken | None = None,
+        metrics_callback: MetricsCallback | None = None,
     ) -> Iterator[str]:
         self.contexts.append(tuple(messages))
         yield from next(self._replies)
+        if metrics_callback is not None:
+            metrics_callback(
+                ProviderMetrics(
+                    provider_name="test",
+                    input_tokens=10,
+                    output_tokens=2,
+                    generation_seconds=0.5,
+                )
+            )
 
 
 def build_character() -> CharacterProfile:
@@ -67,6 +79,7 @@ def test_conversation_does_not_record_failed_reply() -> None:
         conversation.respond("你好")
 
     assert tuple(conversation.history) == ()
+    assert conversation.last_metrics is None
 
 
 def test_streaming_conversation_commits_history_only_after_completion() -> None:
@@ -77,6 +90,7 @@ def test_streaming_conversation_commits_history_only_after_completion() -> None:
 
     assert next(reply_stream) == "第一段"
     assert tuple(conversation.history) == ()
+    assert conversation.last_metrics is None
     assert list(reply_stream) == ["第二段"]
     assert tuple(conversation.history) == (
         Message(MessageRole.USER, "你好"),
@@ -108,6 +122,7 @@ def test_failed_stream_does_not_record_partial_reply() -> None:
             self,
             _messages: Sequence[Message],
             cancellation_token: CancellationToken | None = None,
+            metrics_callback: MetricsCallback | None = None,
         ) -> Iterator[str]:
             yield "第一段"
             raise ReplyProviderError("stream failed")
@@ -118,3 +133,26 @@ def test_failed_stream_does_not_record_partial_reply() -> None:
         list(conversation.stream_response("你好"))
 
     assert tuple(conversation.history) == ()
+    assert conversation.last_metrics is None
+
+
+def test_conversation_records_safe_metrics_for_completed_reply() -> None:
+    provider = RecordingReplyProvider((("第一段", "第二段"),))
+    clock_values = iter((10.0, 10.25, 11.5))
+    conversation = ConversationService(
+        provider,
+        build_character(),
+        clock=lambda: next(clock_values),
+    )
+
+    assert conversation.respond("你好") == "第一段第二段"
+    assert conversation.last_metrics == ReplyMetrics(
+        first_text_seconds=0.25,
+        total_seconds=1.5,
+        provider=ProviderMetrics(
+            provider_name="test",
+            input_tokens=10,
+            output_tokens=2,
+            generation_seconds=0.5,
+        ),
+    )

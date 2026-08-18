@@ -44,6 +44,9 @@ atosaac-virtual-partner chat
   returns to the next prompt.
 - A user/assistant turn is committed to in-memory history only after the provider
   reports normal completion; partial, cancelled, and failed replies are discarded.
+- Each completed reply can expose in-memory first-text latency, end-to-end latency,
+  input/output token counts, and generation speed. Metrics are opt-in at the CLI
+  and contain no prompt, reply, or character text.
 - No persistent memory store, realtime-data tool gateway, audio pipeline, avatar,
   or cloud service is connected yet.
 
@@ -109,8 +112,6 @@ ASR（自动语音识别）把用户说话的音频转换成文本。TTS（文�
 ### Phase 1: text foundation
 
 - Stabilize the CLI conversation loop and exit/error behavior.
-- Record provider latency and token metrics without storing private message
-  content in logs.
 - Add session persistence only after retention and deletion behavior is defined.
 
 ### Phase 2: tools, memory, and character
@@ -144,6 +145,12 @@ ASR（自动语音识别）把用户说话的音频转换成文本。TTS（文�
 
 - Evaluate whether prompt design, retrieval, or fine-tuning best addresses measured
   shortcomings.
+- Treat tokenizer name/version and token counts as dataset metadata. Token budgets
+  still determine context length, batching, memory use, training time, and
+  generation speed even when the model is trained and hosted by this project.
+- Start with reviewed SFT or LoRA experiments on an open base model rather than
+  pretraining a foundation model from scratch. Keep the original base checkpoint,
+  adapter version, dataset version, and evaluation results reproducible.
 - Build reviewed typo-and-slip datasets: preferred replies should understand an
   obvious intended meaning and may tease briefly in light contexts; rejected
   replies should capture mechanical correction, excessive mockery, and unsafe

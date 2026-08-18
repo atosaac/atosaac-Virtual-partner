@@ -6,6 +6,7 @@ from .character import (
     load_default_character,
 )
 from .conversation import ConversationService
+from .metrics import format_reply_metrics
 from .reply import (
     CancellationToken,
     MockReplyProvider,
@@ -36,6 +37,7 @@ def run_chat(
     stream_output_func: Callable[[str], None] | None = None,
     reply_provider: ReplyProvider | None = None,
     character_profile: CharacterProfile | None = None,
+    show_metrics: bool = False,
 ) -> None:
     """Run an interactive terminal chat session."""
     read = input if input_func is None else input_func
@@ -96,3 +98,6 @@ def run_chat(
             write(f"{character.name}: {''.join(reply_chunks).strip()}")
         else:
             write_fragment("\n")
+
+        if show_metrics and conversation.last_metrics is not None:
+            write(format_reply_metrics(conversation.last_metrics))

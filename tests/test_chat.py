@@ -11,7 +11,11 @@ from atosaac_virtual_partner.chat import (
 )
 from atosaac_virtual_partner.character import CharacterProfile
 from atosaac_virtual_partner.message import Message
-from atosaac_virtual_partner.reply import CancellationToken, ReplyProviderError
+from atosaac_virtual_partner.reply import (
+    CancellationToken,
+    MetricsCallback,
+    ReplyProviderError,
+)
 
 
 def test_run_chat_replies_until_user_exits() -> None:
@@ -89,6 +93,7 @@ def test_run_chat_uses_injected_reply_provider() -> None:
             self,
             messages: Sequence[Message],
             cancellation_token: CancellationToken | None = None,
+            metrics_callback: MetricsCallback | None = None,
         ) -> Iterator[str]:
             self.received_contexts.append(tuple(messages))
             yield "这是测试回复"
@@ -143,6 +148,7 @@ def test_run_chat_continues_after_reply_provider_error() -> None:
             self,
             _messages: Sequence[Message],
             cancellation_token: CancellationToken | None = None,
+            metrics_callback: MetricsCallback | None = None,
         ) -> Iterator[str]:
             self.call_count += 1
             if self.call_count == 1:
@@ -173,6 +179,7 @@ def test_run_chat_writes_reply_fragments_as_they_arrive() -> None:
             self,
             _messages: Sequence[Message],
             cancellation_token: CancellationToken | None = None,
+            metrics_callback: MetricsCallback | None = None,
         ) -> Iterator[str]:
             yield "这是"
             yield "流式回复"
@@ -198,6 +205,7 @@ def test_run_chat_cancels_only_the_current_stream_on_keyboard_interrupt() -> Non
             self,
             _messages: Sequence[Message],
             cancellation_token: CancellationToken | None = None,
+            metrics_callback: MetricsCallback | None = None,
         ) -> Iterator[str]:
             yield "未完成"
             raise KeyboardInterrupt
@@ -223,6 +231,7 @@ def test_run_chat_starts_a_new_line_before_reporting_midstream_error() -> None:
             self,
             _messages: Sequence[Message],
             cancellation_token: CancellationToken | None = None,
+            metrics_callback: MetricsCallback | None = None,
         ) -> Iterator[str]:
             yield "未完成"
             raise ReplyProviderError("stream failed")
@@ -240,3 +249,20 @@ def test_run_chat_starts_a_new_line_before_reporting_midstream_error() -> None:
         GOODBYE_MESSAGE,
     ]
     assert fragments == ["atosaac: ", "未完成", "\n"]
+
+
+def test_run_chat_optionally_shows_metrics_without_message_content() -> None:
+    answers: Iterator[str] = iter(["私人内容", "退出"])
+    output: list[str] = []
+
+    run_chat(
+        input_func=lambda _prompt: next(answers),
+        output_func=output.append,
+        show_metrics=True,
+    )
+
+    assert output[0] == WELCOME_MESSAGE
+    assert output[1] == "atosaac: 我听到了：私人内容"
+    assert output[2].startswith("[指标] 首字 ")
+    assert "私人内容" not in output[2]
+    assert output[3] == GOODBYE_MESSAGE

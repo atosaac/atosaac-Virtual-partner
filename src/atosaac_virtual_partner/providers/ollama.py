@@ -6,11 +6,13 @@ from urllib.parse import urlparse, urlunparse
 from urllib.request import Request, urlopen
 
 from ..message import Message
-from ..reply import CancellationToken, ReplyProviderError
+from ..metrics import ProviderMetrics
+from ..reply import CancellationToken, MetricsCallback, ReplyProviderError
 
 
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
 DEFAULT_TIMEOUT_SECONDS = 120.0
+NANOSECONDS_PER_SECOND = 1_000_000_000
 
 
 def _build_chat_url(base_url: str) -> str:
@@ -46,7 +48,25 @@ def _read_error_detail(response: HTTPResponse) -> str | None:
     return None
 
 
-def _parse_stream_event(raw_line: bytes) -> tuple[str, bool]:
+def _optional_nonnegative_int(payload: dict[str, object], field: str) -> int | None:
+    value = payload.get(field)
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ReplyProviderError(f"Ollama returned invalid {field} metrics")
+    return value
+
+
+def _nanoseconds_to_seconds(value: int | None) -> float | None:
+    if value is None:
+        return None
+    return value / NANOSECONDS_PER_SECOND
+
+
+def _parse_stream_event(
+    raw_line: bytes,
+    model: str,
+) -> tuple[str, bool, ProviderMetrics | None]:
     try:
         payload = json.loads(raw_line.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -69,7 +89,29 @@ def _parse_stream_event(raw_line: bytes) -> tuple[str, bool]:
     content = message.get("content")
     if not isinstance(content, str):
         raise ReplyProviderError("Ollama stream event has invalid message content")
-    return content, done
+    if not done:
+        return content, False, None
+
+    total_duration = _optional_nonnegative_int(payload, "total_duration")
+    load_duration = _optional_nonnegative_int(payload, "load_duration")
+    prompt_eval_count = _optional_nonnegative_int(payload, "prompt_eval_count")
+    prompt_eval_duration = _optional_nonnegative_int(
+        payload,
+        "prompt_eval_duration",
+    )
+    eval_count = _optional_nonnegative_int(payload, "eval_count")
+    eval_duration = _optional_nonnegative_int(payload, "eval_duration")
+    metrics = ProviderMetrics(
+        provider_name="ollama",
+        model=model,
+        input_tokens=prompt_eval_count,
+        output_tokens=eval_count,
+        provider_total_seconds=_nanoseconds_to_seconds(total_duration),
+        load_seconds=_nanoseconds_to_seconds(load_duration),
+        prompt_eval_seconds=_nanoseconds_to_seconds(prompt_eval_duration),
+        generation_seconds=_nanoseconds_to_seconds(eval_duration),
+    )
+    return content, True, metrics
 
 
 class OllamaReplyProvider:
@@ -95,6 +137,7 @@ class OllamaReplyProvider:
         self,
         messages: Sequence[Message],
         cancellation_token: CancellationToken | None = None,
+        metrics_callback: MetricsCallback | None = None,
     ) -> Iterator[str]:
         token = cancellation_token or CancellationToken()
         token.raise_if_cancelled()
@@ -124,10 +167,12 @@ class OllamaReplyProvider:
                     token.raise_if_cancelled()
                     if not raw_line.strip():
                         continue
-                    content, done = _parse_stream_event(raw_line)
+                    content, done, metrics = _parse_stream_event(raw_line, self.model)
                     if content:
                         yield content
                     if done:
+                        if metrics_callback is not None and metrics is not None:
+                            metrics_callback(metrics)
                         completed = True
                         break
 

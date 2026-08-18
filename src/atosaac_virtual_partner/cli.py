@@ -53,6 +53,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_OLLAMA_URL,
         help=f"Ollama server URL (default: {DEFAULT_OLLAMA_URL}).",
     )
+    chat_parser.add_argument(
+        "--show-metrics",
+        action="store_true",
+        help="Show latency and token metrics after each successful reply.",
+    )
 
     return parser
 
@@ -94,4 +99,5 @@ def main(argv: Sequence[str] | None = None) -> None:
         run_chat(
             character_profile=character,
             reply_provider=reply_provider,
+            show_metrics=args.show_metrics,
         )

@@ -6,6 +6,7 @@ from urllib.error import HTTPError, URLError
 import pytest
 
 from atosaac_virtual_partner.message import Message, MessageRole
+from atosaac_virtual_partner.metrics import ProviderMetrics
 from atosaac_virtual_partner.providers import ollama
 from atosaac_virtual_partner.providers.ollama import OllamaReplyProvider
 from atosaac_virtual_partner.reply import (
@@ -53,6 +54,12 @@ def test_ollama_provider_streams_conversation_context(monkeypatch) -> None:
                 {
                     "message": {"role": "assistant", "content": ""},
                     "done": True,
+                    "total_duration": 2_000_000_000,
+                    "load_duration": 100_000_000,
+                    "prompt_eval_count": 11,
+                    "prompt_eval_duration": 500_000_000,
+                    "eval_count": 5,
+                    "eval_duration": 250_000_000,
                 },
             )
         )
@@ -64,12 +71,14 @@ def test_ollama_provider_streams_conversation_context(monkeypatch) -> None:
         timeout_seconds=30,
     )
 
+    reported_metrics: list[ProviderMetrics] = []
     chunks = list(
         provider.stream_reply(
             (
                 Message(MessageRole.SYSTEM, "Be playful."),
                 Message(MessageRole.USER, "你好"),
-            )
+            ),
+            metrics_callback=reported_metrics.append,
         )
     )
 
@@ -88,6 +97,18 @@ def test_ollama_provider_streams_conversation_context(monkeypatch) -> None:
     }
     assert request.get_header("Accept") == "application/x-ndjson"
     assert chunks == ["你好", "呀。"]
+    assert reported_metrics == [
+        ProviderMetrics(
+            provider_name="ollama",
+            model="qwen3:4b-instruct",
+            input_tokens=11,
+            output_tokens=5,
+            provider_total_seconds=2.0,
+            load_seconds=0.1,
+            prompt_eval_seconds=0.5,
+            generation_seconds=0.25,
+        )
+    ]
 
 
 def test_ollama_provider_does_not_return_separate_thinking(monkeypatch) -> None:
@@ -198,6 +219,25 @@ def test_ollama_provider_honors_cancellation_before_request(monkeypatch) -> None
                 cancellation_token=cancellation_token,
             )
         )
+
+
+def test_ollama_provider_rejects_invalid_usage_metrics(monkeypatch) -> None:
+    def fake_urlopen(_request, timeout):
+        return FakeResponse(
+            (
+                {
+                    "message": {"role": "assistant", "content": "完成"},
+                    "done": True,
+                    "eval_count": -1,
+                },
+            )
+        )
+
+    monkeypatch.setattr(ollama, "urlopen", fake_urlopen)
+    provider = OllamaReplyProvider(model="qwen3:4b-instruct")
+
+    with pytest.raises(ReplyProviderError, match="invalid eval_count metrics"):
+        list(provider.stream_reply((Message(MessageRole.USER, "hello"),)))
 
 
 @pytest.mark.parametrize(
