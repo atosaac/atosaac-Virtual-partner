@@ -56,6 +56,10 @@ atosaac-virtual-partner chat
   text-to-audio boundary: it does not train or clone a voice, does not speak chat
   replies automatically, and is not the final audio architecture. See
   `docs/TTS_EXPERIMENT.md` before extending it.
+- This repository owns only generic TTS foundations. Angelina-specific voice
+  configuration, integration, reference manifests, and future trained artifacts
+  belong to `angelina-macos-companion`; large or private files stay in that
+  project's ignored local storage rather than Git.
 
 ## Architecture direction
 

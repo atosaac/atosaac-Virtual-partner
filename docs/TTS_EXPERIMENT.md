@@ -27,14 +27,27 @@ TTS（文本转语音）把文字合成为可播放的语音。
   implemented.
 - The desktop-companion repository is not coupled to this experiment.
 
+## Repository ownership boundary
+
+`atosaac-Virtual-partner` owns only the reusable foundation: TTS protocols,
+generic provider or service clients, the macOS fallback, shared validation, and
+provider-independent tests. It must not become the storage location for an
+Angelina voice profile or trained Angelina artifacts.
+
+`angelina-macos-companion` owns everything specific to that desktop pet: voice
+selection and style configuration, runtime wiring, character-specific reference
+manifests, and any future trained adapter or checkpoint used by Angelina. Large
+or private artifacts may live under a local ignored directory inside that project
+(planned as `local_data/tts/`), but raw recordings, reference clips, datasets,
+adapters, and model weights must not be committed to Git.
+
 ## Safe continuation boundary
 
-Keep custom model dependencies and weights outside this repository. Add future
-engines as new `SpeechSynthesizer` providers or as clients of an isolated local
-speech service. Before training or fine-tuning, record the voice owner's consent,
-dataset provenance and license, evaluation split, retention rule, and deletion
-procedure. Raw recordings, reference clips, datasets, and model weights must not
-be committed.
+Keep custom model dependencies and pet-specific weights outside this repository.
+Add future engines as new `SpeechSynthesizer` providers or as clients of an
+isolated local speech service. Before training or fine-tuning, record the voice
+owner's consent, dataset provenance and license, evaluation split, retention
+rule, and deletion procedure.
 
 The next useful experiment is an OpenAI-compatible local speech client with the
 macOS provider retained as a fallback. Automatic chat speech should only follow

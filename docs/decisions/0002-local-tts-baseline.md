@@ -47,3 +47,6 @@ license, consent, held-out evaluation clips, and deletion policy are recorded.
 - A custom model can replace the provider without changing conversation logic.
 - The baseline does not clone a character voice and does not yet speak each chat
   reply automatically; interruption and streaming audio remain separate work.
+- This repository retains only generic TTS foundations. Desktop-pet-specific
+  voice configuration and future trained artifacts belong to the desktop-pet
+  project, with large or private files excluded from Git.
