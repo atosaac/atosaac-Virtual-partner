@@ -3,6 +3,7 @@ from collections.abc import Iterator, Sequence
 import pytest
 
 from atosaac_virtual_partner.character import CharacterProfile
+from atosaac_virtual_partner.context import RecentTurnsContextPolicy
 from atosaac_virtual_partner.conversation import ConversationService
 from atosaac_virtual_partner.grounding import DEFAULT_RUNTIME_GROUNDING
 from atosaac_virtual_partner.message import Message, MessageRole
@@ -167,4 +168,36 @@ def test_conversation_records_safe_metrics_for_completed_reply() -> None:
             output_tokens=2,
             generation_seconds=0.5,
         ),
+    )
+
+
+def test_conversation_sends_recent_turns_but_preserves_complete_history() -> None:
+    provider = RecordingReplyProvider(
+        (("reply 1",), ("reply 2",), ("reply 3",), ("reply 4",))
+    )
+    conversation = ConversationService(
+        provider,
+        build_character(),
+        context_window_policy=RecentTurnsContextPolicy(max_turns=2),
+    )
+
+    for turn in range(1, 5):
+        conversation.respond(f"message {turn}")
+
+    assert provider.contexts[3][-5:] == (
+        Message(MessageRole.USER, "message 2"),
+        Message(MessageRole.ASSISTANT, "reply 2"),
+        Message(MessageRole.USER, "message 3"),
+        Message(MessageRole.ASSISTANT, "reply 3"),
+        Message(MessageRole.USER, "message 4"),
+    )
+    assert tuple(conversation.history) == (
+        Message(MessageRole.USER, "message 1"),
+        Message(MessageRole.ASSISTANT, "reply 1"),
+        Message(MessageRole.USER, "message 2"),
+        Message(MessageRole.ASSISTANT, "reply 2"),
+        Message(MessageRole.USER, "message 3"),
+        Message(MessageRole.ASSISTANT, "reply 3"),
+        Message(MessageRole.USER, "message 4"),
+        Message(MessageRole.ASSISTANT, "reply 4"),
     )

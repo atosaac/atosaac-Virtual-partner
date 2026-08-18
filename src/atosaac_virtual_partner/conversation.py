@@ -2,6 +2,7 @@ from collections.abc import Callable, Iterator, Sequence
 from time import perf_counter
 
 from .character import CharacterProfile
+from .context import DEFAULT_CONTEXT_WINDOW_POLICY, ContextWindowPolicy
 from .grounding import DEFAULT_RUNTIME_GROUNDING, RuntimeGrounding
 from .message import Message, MessageRole
 from .metrics import ProviderMetrics, ReplyMetrics
@@ -17,10 +18,12 @@ class ConversationService:
         character: CharacterProfile,
         clock: Callable[[], float] = perf_counter,
         runtime_grounding: RuntimeGrounding = DEFAULT_RUNTIME_GROUNDING,
+        context_window_policy: ContextWindowPolicy = DEFAULT_CONTEXT_WINDOW_POLICY,
     ) -> None:
         self._reply_provider = reply_provider
         self._character = character
         self._runtime_grounding = runtime_grounding
+        self._context_window_policy = context_window_policy
         self._clock = clock
         self._history: list[Message] = []
         self._last_metrics: ReplyMetrics | None = None
@@ -59,13 +62,14 @@ class ConversationService:
             provider_metrics = metrics
 
         user_message = Message(MessageRole.USER, normalized_text)
+        selected_history = self._context_window_policy.select_history(self._history)
         context = (
             Message(MessageRole.SYSTEM, self._character.instructions),
             Message(
                 MessageRole.SYSTEM,
                 self._runtime_grounding.system_instructions(),
             ),
-            *self._history,
+            *selected_history,
             user_message,
         )
         reply_chunks: list[str] = []
