@@ -37,10 +37,15 @@ atosaac-virtual-partner chat
 - The deterministic local mock provider validates the flow but does not yet
   exhibit the supplied character behavior.
 - An optional Ollama reply provider sends the character instructions and complete
-  in-memory conversation to a configurable local Chat API. It currently waits for
-  a complete, non-streaming response.
-- No persistent memory store, audio pipeline, avatar, or cloud service is connected
-  yet.
+  in-memory conversation to a configurable local Chat API. It consumes NDJSON
+  reply fragments and exposes them to the CLI as they arrive.
+- Reply generation has an explicit cancellation token. In a macOS terminal, the
+  CLI maps `Control+C` (not `Command+C`) during generation to cancellation and
+  returns to the next prompt.
+- A user/assistant turn is committed to in-memory history only after the provider
+  reports normal completion; partial, cancelled, and failed replies are discarded.
+- No persistent memory store, realtime-data tool gateway, audio pipeline, avatar,
+  or cloud service is connected yet.
 
 ## Architecture direction
 
@@ -65,23 +70,57 @@ Recommended boundaries as features are introduced:
 4. **Memory interface** separates storage and retrieval from reply generation.
 5. **Audio adapters** isolate ASR and TTS implementations.
 6. **Avatar adapter** translates character state into expressions and motion.
+7. **Tool gateway** validates model-requested capabilities such as weather before
+   dispatching them to small, replaceable adapters.
+
+Realtime data must not mean giving the model unrestricted network access. The
+intended flow is:
+
+```text
+model proposes a structured tool request
+                  |
+          capability registry
+                  |
+       permission and parameter checks
+                  |
+       weather / future data adapter
+                  |
+   result with source and observation time
+                  |
+        model writes the final reply
+```
+
+The model may decide that a weather lookup would help, but the application owns
+execution. Read-only tools may be pre-approved individually; actions that contact
+people, publish data, spend money, or change external state still require explicit
+confirmation. Location should default to a user-configured city rather than silent
+GPS access, and realtime results should carry a source timestamp so stale data is
+not presented as current.
 
 ASR（自动语音识别）把用户说话的音频转换成文本。TTS（文本转语音）把角色回复
 合成为可播放的语音。RAG（检索增强生成）先从记忆或资料中检索相关内容，再把它们
 提供给模型生成回复。
+
+工具调用（tool calling）是模型提出结构化查询或操作请求，由应用校验权限并执行，
+再把结果交还模型组织回答；它和让模型直接、无限制地访问网络不是一回事。
 
 ## Incremental roadmap
 
 ### Phase 1: text foundation
 
 - Stabilize the CLI conversation loop and exit/error behavior.
-- Add explicit streaming and cancellation semantics to replies.
 - Record provider latency and token metrics without storing private message
   content in logs.
 - Add session persistence only after retention and deletion behavior is defined.
 
-### Phase 2: memory and character
+### Phase 2: tools, memory, and character
 
+- Introduce typed tool requests/results, a capability registry, permission checks,
+  timeouts, and user-visible error handling before enabling realtime data.
+- Use a read-only weather adapter as the first realtime tool. Support a configured
+  city, source/observation timestamps, caching, and graceful offline behavior.
+- Allow the character to propose an enabled lookup when context makes it useful,
+  while keeping tool execution and permissions under application control.
 - Add session history, then an explicit long-term-memory store.
 - Add retrieval, retention, deletion, and user-visible privacy controls.
 - Convert reviewed positive and rejected character examples into behavioral tests.

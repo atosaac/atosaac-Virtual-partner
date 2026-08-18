@@ -3,6 +3,7 @@ from collections.abc import Iterator, Sequence
 import pytest
 
 from atosaac_virtual_partner.chat import (
+    CANCELLED_MESSAGE,
     GOODBYE_MESSAGE,
     REPLY_ERROR_PREFIX,
     WELCOME_MESSAGE,
@@ -10,7 +11,7 @@ from atosaac_virtual_partner.chat import (
 )
 from atosaac_virtual_partner.character import CharacterProfile
 from atosaac_virtual_partner.message import Message
-from atosaac_virtual_partner.reply import ReplyProviderError
+from atosaac_virtual_partner.reply import CancellationToken, ReplyProviderError
 
 
 def test_run_chat_replies_until_user_exits() -> None:
@@ -84,9 +85,13 @@ def test_run_chat_uses_injected_reply_provider() -> None:
         def __init__(self) -> None:
             self.received_contexts: list[tuple[Message, ...]] = []
 
-        def generate_reply(self, messages: Sequence[Message]) -> str:
+        def stream_reply(
+            self,
+            messages: Sequence[Message],
+            cancellation_token: CancellationToken | None = None,
+        ) -> Iterator[str]:
             self.received_contexts.append(tuple(messages))
-            return "这是测试回复"
+            yield "这是测试回复"
 
     provider = RecordingReplyProvider()
     run_chat(
@@ -134,11 +139,15 @@ def test_run_chat_continues_after_reply_provider_error() -> None:
         def __init__(self) -> None:
             self.call_count = 0
 
-        def generate_reply(self, _messages: Sequence[Message]) -> str:
+        def stream_reply(
+            self,
+            _messages: Sequence[Message],
+            cancellation_token: CancellationToken | None = None,
+        ) -> Iterator[str]:
             self.call_count += 1
             if self.call_count == 1:
                 raise ReplyProviderError("temporary failure")
-            return "恢复了"
+            yield "恢复了"
 
     run_chat(
         input_func=lambda _prompt: next(answers),
@@ -152,3 +161,82 @@ def test_run_chat_continues_after_reply_provider_error() -> None:
         "atosaac: 恢复了",
         GOODBYE_MESSAGE,
     ]
+
+
+def test_run_chat_writes_reply_fragments_as_they_arrive() -> None:
+    answers: Iterator[str] = iter(["你好", "退出"])
+    output: list[str] = []
+    fragments: list[str] = []
+
+    class ChunkedReplyProvider:
+        def stream_reply(
+            self,
+            _messages: Sequence[Message],
+            cancellation_token: CancellationToken | None = None,
+        ) -> Iterator[str]:
+            yield "这是"
+            yield "流式回复"
+
+    run_chat(
+        input_func=lambda _prompt: next(answers),
+        output_func=output.append,
+        stream_output_func=fragments.append,
+        reply_provider=ChunkedReplyProvider(),
+    )
+
+    assert output == [WELCOME_MESSAGE, GOODBYE_MESSAGE]
+    assert fragments == ["atosaac: ", "这是", "流式回复", "\n"]
+
+
+def test_run_chat_cancels_only_the_current_stream_on_keyboard_interrupt() -> None:
+    answers: Iterator[str] = iter(["你好", "退出"])
+    output: list[str] = []
+    fragments: list[str] = []
+
+    class InterruptedReplyProvider:
+        def stream_reply(
+            self,
+            _messages: Sequence[Message],
+            cancellation_token: CancellationToken | None = None,
+        ) -> Iterator[str]:
+            yield "未完成"
+            raise KeyboardInterrupt
+
+    run_chat(
+        input_func=lambda _prompt: next(answers),
+        output_func=output.append,
+        stream_output_func=fragments.append,
+        reply_provider=InterruptedReplyProvider(),
+    )
+
+    assert output == [WELCOME_MESSAGE, CANCELLED_MESSAGE, GOODBYE_MESSAGE]
+    assert fragments == ["atosaac: ", "未完成", "\n"]
+
+
+def test_run_chat_starts_a_new_line_before_reporting_midstream_error() -> None:
+    answers: Iterator[str] = iter(["你好", "退出"])
+    output: list[str] = []
+    fragments: list[str] = []
+
+    class FailingStreamReplyProvider:
+        def stream_reply(
+            self,
+            _messages: Sequence[Message],
+            cancellation_token: CancellationToken | None = None,
+        ) -> Iterator[str]:
+            yield "未完成"
+            raise ReplyProviderError("stream failed")
+
+    run_chat(
+        input_func=lambda _prompt: next(answers),
+        output_func=output.append,
+        stream_output_func=fragments.append,
+        reply_provider=FailingStreamReplyProvider(),
+    )
+
+    assert output == [
+        WELCOME_MESSAGE,
+        f"{REPLY_ERROR_PREFIX}stream failed",
+        GOODBYE_MESSAGE,
+    ]
+    assert fragments == ["atosaac: ", "未完成", "\n"]

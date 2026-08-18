@@ -1,12 +1,12 @@
 import json
-from collections.abc import Sequence
-from http.client import HTTPResponse
+from collections.abc import Iterator, Sequence
+from http.client import HTTPException, HTTPResponse
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse, urlunparse
 from urllib.request import Request, urlopen
 
 from ..message import Message
-from ..reply import ReplyProviderError
+from ..reply import CancellationToken, ReplyProviderError
 
 
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
@@ -46,6 +46,32 @@ def _read_error_detail(response: HTTPResponse) -> str | None:
     return None
 
 
+def _parse_stream_event(raw_line: bytes) -> tuple[str, bool]:
+    try:
+        payload = json.loads(raw_line.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ReplyProviderError("Ollama returned an invalid JSON stream event") from exc
+
+    if not isinstance(payload, dict):
+        raise ReplyProviderError("Ollama returned an invalid stream event")
+
+    error = payload.get("error")
+    if isinstance(error, str) and error.strip():
+        raise ReplyProviderError(f"Ollama stream failed: {error.strip()}")
+
+    done = payload.get("done")
+    if not isinstance(done, bool):
+        raise ReplyProviderError("Ollama stream event is missing a done flag")
+
+    message = payload.get("message")
+    if not isinstance(message, dict):
+        raise ReplyProviderError("Ollama stream event is missing message data")
+    content = message.get("content")
+    if not isinstance(content, str):
+        raise ReplyProviderError("Ollama stream event has invalid message content")
+    return content, done
+
+
 class OllamaReplyProvider:
     """Generate replies with Ollama's local chat API."""
 
@@ -65,21 +91,27 @@ class OllamaReplyProvider:
         self.chat_url = _build_chat_url(base_url)
         self.timeout_seconds = timeout_seconds
 
-    def generate_reply(self, messages: Sequence[Message]) -> str:
+    def stream_reply(
+        self,
+        messages: Sequence[Message],
+        cancellation_token: CancellationToken | None = None,
+    ) -> Iterator[str]:
+        token = cancellation_token or CancellationToken()
+        token.raise_if_cancelled()
         payload = {
             "model": self.model,
             "messages": [
                 {"role": message.role.value, "content": message.content}
                 for message in messages
             ],
-            "stream": False,
+            "stream": True,
             "think": False,
         }
         request = Request(
             self.chat_url,
             data=json.dumps(payload).encode("utf-8"),
             headers={
-                "Accept": "application/json",
+                "Accept": "application/x-ndjson",
                 "Content-Type": "application/json",
             },
             method="POST",
@@ -87,27 +119,38 @@ class OllamaReplyProvider:
 
         try:
             with urlopen(request, timeout=self.timeout_seconds) as response:
-                response_payload = json.loads(response.read().decode("utf-8"))
+                completed = False
+                for raw_line in response:
+                    token.raise_if_cancelled()
+                    if not raw_line.strip():
+                        continue
+                    content, done = _parse_stream_event(raw_line)
+                    if content:
+                        yield content
+                    if done:
+                        completed = True
+                        break
+
+                token.raise_if_cancelled()
+                if not completed:
+                    raise ReplyProviderError(
+                        "Ollama stream ended before completion"
+                    )
         except HTTPError as exc:
             detail = _read_error_detail(exc)
             suffix = f": {detail}" if detail else ""
             raise ReplyProviderError(
                 f"Ollama request failed with HTTP {exc.code}{suffix}"
             ) from exc
-        except (TimeoutError, URLError, OSError) as exc:
+        except (TimeoutError, URLError, OSError, HTTPException) as exc:
             raise ReplyProviderError(
                 f"Cannot connect to Ollama at {self.chat_url}. "
                 "Make sure Ollama is installed and running."
             ) from exc
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise ReplyProviderError("Ollama returned invalid JSON") from exc
 
-        if not isinstance(response_payload, dict):
-            raise ReplyProviderError("Ollama returned an invalid response object")
-        message = response_payload.get("message")
-        if not isinstance(message, dict):
-            raise ReplyProviderError("Ollama response is missing message data")
-        content = message.get("content")
-        if not isinstance(content, str) or not content.strip():
+    def generate_reply(self, messages: Sequence[Message]) -> str:
+        """Return a complete reply for callers that do not consume streams."""
+        content = "".join(self.stream_reply(messages)).strip()
+        if not content:
             raise ReplyProviderError("Ollama returned an empty reply")
-        return content.strip()
+        return content

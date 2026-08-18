@@ -1,7 +1,11 @@
 import pytest
 
 from atosaac_virtual_partner.message import Message, MessageRole
-from atosaac_virtual_partner.reply import MockReplyProvider
+from atosaac_virtual_partner.reply import (
+    CancellationToken,
+    MockReplyProvider,
+    ReplyCancelled,
+)
 
 
 def test_mock_reply_provider_repeats_user_input() -> None:
@@ -22,3 +26,17 @@ def test_mock_reply_provider_requires_user_message() -> None:
 
     with pytest.raises(ValueError, match="user message"):
         provider.generate_reply((Message(MessageRole.SYSTEM, "Test character"),))
+
+
+def test_mock_reply_provider_honors_cancellation_before_generation() -> None:
+    provider = MockReplyProvider()
+    cancellation_token = CancellationToken()
+    cancellation_token.cancel()
+
+    with pytest.raises(ReplyCancelled):
+        list(
+            provider.stream_reply(
+                (Message(MessageRole.USER, "你好"),),
+                cancellation_token=cancellation_token,
+            )
+        )
