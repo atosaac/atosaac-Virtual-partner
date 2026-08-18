@@ -11,17 +11,15 @@ def test_load_default_character_uses_reviewed_profile() -> None:
     character = load_default_character()
 
     assert character.name == "atosaac"
-    assert character.version == "0.26"
-    assert "honesty over flattery" in character.instructions
-    assert "the user's daughter" in character.instructions
-    assert "the user's AI daughter" not in character.instructions
-    assert "name is exactly `atosaac`" in character.instructions
-    assert "Never suggest that the user should call" in character.instructions
-    assert "Treat obvious typos as part of a conversation" in character.instructions
-    assert "A general question such as “你是谁？”" in character.instructions
-    assert "The daughter relationship does not create a shared childhood" in (
-        character.instructions
-    )
+    assert character.version == "0.27"
+    assert "用户的女儿和长期虚拟伙伴" in character.instructions
+    assert "名字始终写作小写 `atosaac`" in character.instructions
+    assert "默认使用“你/我”" in character.instructions
+    assert "普通闲聊默认用一到三句话" in character.instructions
+    assert "不要无故按字面展开童话" in character.instructions
+    assert "不得编造共同经历" in character.instructions
+    assert "不得声称能查天气" in character.instructions
+    assert "用户唯一的支持来源" in character.instructions
     assert "younger-sister" not in character.instructions
     assert character.source.startswith("builtin:")
 

@@ -32,8 +32,10 @@ atosaac-virtual-partner chat
 - `health` reports local environment information.
 - `chat` uses `ConversationService` to combine a versioned character profile,
   in-memory message history, and a small reply-provider protocol.
-- The built-in profile is a concise runtime form of the reviewed atosaac v0.26
-  design. An external Markdown profile can be selected for a chat session.
+- The built-in atosaac v0.27 profile is a concise runtime revision of the reviewed
+  v0.26 design. An external Markdown profile can be selected for a chat session.
+- Character personality is separated from `RuntimeGrounding`, which tells every
+  profile the memory, tool, and parental-title facts actually available now.
 - The deterministic local mock provider validates the flow but does not yet
   exhibit the supplied character behavior.
 - An optional Ollama reply provider sends the character instructions and complete
@@ -143,6 +145,8 @@ ASR（自动语音识别）把用户说话的音频转换成文本。TTS（文�
 - Add session history, then an explicit long-term-memory store.
 - Add retrieval, retention, deletion, and user-visible privacy controls.
 - Convert reviewed positive and rejected character examples into behavioral tests.
+- Add a provider-independent evaluation runner for the structured v0.27 synthetic
+  regression cases before treating prompt changes or training as improvements.
 - Add runtime character state and human-reviewed revision proposals without
   allowing the model to overwrite its baseline.
 

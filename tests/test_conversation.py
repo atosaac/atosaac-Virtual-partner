@@ -4,6 +4,7 @@ import pytest
 
 from atosaac_virtual_partner.character import CharacterProfile
 from atosaac_virtual_partner.conversation import ConversationService
+from atosaac_virtual_partner.grounding import DEFAULT_RUNTIME_GROUNDING
 from atosaac_virtual_partner.message import Message, MessageRole
 from atosaac_virtual_partner.metrics import ProviderMetrics, ReplyMetrics
 from atosaac_virtual_partner.reply import (
@@ -58,15 +59,26 @@ def test_conversation_includes_character_and_previous_turns() -> None:
     assert second_reply == "第二条回复"
     assert provider.contexts[0] == (
         Message(MessageRole.SYSTEM, "Be independent and playful."),
+        Message(
+            MessageRole.SYSTEM,
+            DEFAULT_RUNTIME_GROUNDING.system_instructions(),
+        ),
         Message(MessageRole.USER, "你好"),
     )
     assert provider.contexts[1] == (
         Message(MessageRole.SYSTEM, "Be independent and playful."),
+        Message(
+            MessageRole.SYSTEM,
+            DEFAULT_RUNTIME_GROUNDING.system_instructions(),
+        ),
         Message(MessageRole.USER, "你好"),
         Message(MessageRole.ASSISTANT, "第一条回复"),
         Message(MessageRole.USER, "还记得吗？"),
     )
-    assert tuple(conversation.history) == provider.contexts[1][1:] + (
+    assert tuple(conversation.history) == (
+        Message(MessageRole.USER, "你好"),
+        Message(MessageRole.ASSISTANT, "第一条回复"),
+        Message(MessageRole.USER, "还记得吗？"),
         Message(MessageRole.ASSISTANT, "第二条回复"),
     )
 

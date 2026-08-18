@@ -5,17 +5,28 @@
 - `docs/character/ATOSAAC_PERSONA_V0.26.md` is the complete human-authored design
   source. It includes examples and rejected behaviors for review and future
   evaluation; it is not automatically approved as training data.
-- `src/atosaac_virtual_partner/characters/atosaac_v0.26.md` is the concise runtime
-  profile passed to reply providers.
+- `src/atosaac_virtual_partner/characters/atosaac_v0.27.md` is the active concise
+  runtime profile. It keeps the v0.26 identity while tightening response length,
+  figurative-language handling, factual grounding, tool honesty, and titles.
+- The previous v0.26 runtime file remains versioned for comparison and rollback;
+  it is no longer loaded by default.
+- `RuntimeGrounding` renders application-known facts about persistent memory,
+  enabled tools, and the reviewed parental title for the current runtime.
 - `CharacterProfile` is an immutable value containing a name, version,
   instructions, and source.
-- `ConversationService` combines the runtime profile, conversation history, and
-  current user message before requesting a reply.
+- `ConversationService` combines the runtime profile, runtime grounding,
+  conversation history, and current user message before requesting a reply.
 
 Keeping the full design source separate avoids spending context tokens on dozens
 of examples during every reply. The runtime profile should contain stable identity
 and rules; examples should become evaluation cases or carefully reviewed training
 data later.
+
+Stable personality and runtime facts are deliberately separate. A character file
+must not decide whether weather, memory, or another capability really exists.
+Those facts come from the application, so a future adapter can enable one named
+capability without rewriting the character. An enabled tool still counts as used
+only after a real result is returned.
 
 ## External profiles
 

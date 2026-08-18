@@ -2,6 +2,7 @@ from collections.abc import Callable, Iterator, Sequence
 from time import perf_counter
 
 from .character import CharacterProfile
+from .grounding import DEFAULT_RUNTIME_GROUNDING, RuntimeGrounding
 from .message import Message, MessageRole
 from .metrics import ProviderMetrics, ReplyMetrics
 from .reply import CancellationToken, ReplyProvider
@@ -15,9 +16,11 @@ class ConversationService:
         reply_provider: ReplyProvider,
         character: CharacterProfile,
         clock: Callable[[], float] = perf_counter,
+        runtime_grounding: RuntimeGrounding = DEFAULT_RUNTIME_GROUNDING,
     ) -> None:
         self._reply_provider = reply_provider
         self._character = character
+        self._runtime_grounding = runtime_grounding
         self._clock = clock
         self._history: list[Message] = []
         self._last_metrics: ReplyMetrics | None = None
@@ -58,6 +61,10 @@ class ConversationService:
         user_message = Message(MessageRole.USER, normalized_text)
         context = (
             Message(MessageRole.SYSTEM, self._character.instructions),
+            Message(
+                MessageRole.SYSTEM,
+                self._runtime_grounding.system_instructions(),
+            ),
             *self._history,
             user_message,
         )

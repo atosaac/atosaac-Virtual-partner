@@ -27,7 +27,7 @@ def test_chat_command_starts_chat(monkeypatch) -> None:
 
     character, reply_provider, show_metrics = started[0]
     assert character.name == "atosaac"
-    assert character.version == "0.26"
+    assert character.version == "0.27"
     assert isinstance(reply_provider, MockReplyProvider)
     assert show_metrics is False
 
