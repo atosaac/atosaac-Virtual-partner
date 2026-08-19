@@ -171,7 +171,7 @@ def test_run_chat_continues_after_reply_provider_error() -> None:
 
 
 def test_run_chat_writes_reply_fragments_as_they_arrive() -> None:
-    answers: Iterator[str] = iter(["你好", "退出"])
+    answers: Iterator[str] = iter(["普通消息", "退出"])
     output: list[str] = []
     fragments: list[str] = []
 
@@ -197,7 +197,7 @@ def test_run_chat_writes_reply_fragments_as_they_arrive() -> None:
 
 
 def test_run_chat_cancels_only_the_current_stream_on_keyboard_interrupt() -> None:
-    answers: Iterator[str] = iter(["你好", "退出"])
+    answers: Iterator[str] = iter(["普通消息", "退出"])
     output: list[str] = []
     fragments: list[str] = []
 
@@ -223,7 +223,7 @@ def test_run_chat_cancels_only_the_current_stream_on_keyboard_interrupt() -> Non
 
 
 def test_run_chat_starts_a_new_line_before_reporting_midstream_error() -> None:
-    answers: Iterator[str] = iter(["你好", "退出"])
+    answers: Iterator[str] = iter(["普通消息", "退出"])
     output: list[str] = []
     fragments: list[str] = []
 

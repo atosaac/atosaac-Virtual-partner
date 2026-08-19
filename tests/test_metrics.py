@@ -36,3 +36,15 @@ def test_format_reply_metrics_contains_only_safe_aggregate_values() -> None:
     )
     assert "prompt" not in summary
     assert "message" not in summary
+
+
+def test_format_reply_metrics_reports_local_fallback_without_content() -> None:
+    summary = format_reply_metrics(
+        ReplyMetrics(
+            first_text_seconds=0.5,
+            total_seconds=0.5,
+            local_fallback_used=True,
+        )
+    )
+
+    assert summary == "[指标] 首字 0.50s | 总耗时 0.50s | 已用本地回退"

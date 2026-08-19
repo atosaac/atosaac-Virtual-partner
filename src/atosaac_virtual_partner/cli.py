@@ -4,6 +4,11 @@ from pathlib import Path
 
 from .character import CharacterLoadError, load_character
 from .chat import run_chat
+from .dialogue_policy import (
+    DialoguePolicy,
+    HeuristicDialoguePolicy,
+    PassthroughDialoguePolicy,
+)
 from .health import build_health_report
 from .initiative import IdleInitiativePolicy
 from .providers import DEFAULT_OLLAMA_URL, OllamaReplyProvider
@@ -18,6 +23,7 @@ from .tts import (
 
 
 PROVIDER_NAMES = ("mock", "ollama")
+DIALOGUE_POLICY_NAMES = ("heuristic", "none")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -65,6 +71,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--show-metrics",
         action="store_true",
         help="Show latency and token metrics after each successful reply.",
+    )
+    chat_parser.add_argument(
+        "--dialogue-policy",
+        choices=DIALOGUE_POLICY_NAMES,
+        default="heuristic",
+        help=(
+            "Per-turn dialogue guidance (default: heuristic; "
+            "use none for a baseline comparison)."
+        ),
     )
     chat_parser.add_argument(
         "--idle-initiative-seconds",
@@ -119,6 +134,15 @@ def build_speech_synthesizer(voice: str, rate: int) -> SpeechSynthesizer:
     return MacOSSaySynthesizer(voice=voice, rate=rate)
 
 
+def build_dialogue_policy(policy_name: str) -> DialoguePolicy:
+    """Build replaceable per-turn guidance with an explicit fallback."""
+    if policy_name == "heuristic":
+        return HeuristicDialoguePolicy()
+    if policy_name == "none":
+        return PassthroughDialoguePolicy()
+    raise ValueError(f"Unknown dialogue policy: {policy_name}")
+
+
 def main(argv: Sequence[str] | None = None) -> None:
     """Run the selected Virtual Partner command."""
     parser = build_parser()
@@ -151,6 +175,7 @@ def main(argv: Sequence[str] | None = None) -> None:
                 if args.idle_initiative_seconds is None
                 else IdleInitiativePolicy(args.idle_initiative_seconds)
             )
+            dialogue_policy = build_dialogue_policy(args.dialogue_policy)
         except (CharacterLoadError, ValueError) as exc:
             parser.error(str(exc))
         run_chat(
@@ -158,4 +183,5 @@ def main(argv: Sequence[str] | None = None) -> None:
             reply_provider=reply_provider,
             show_metrics=args.show_metrics,
             initiative_policy=initiative_policy,
+            dialogue_policy=dialogue_policy,
         )

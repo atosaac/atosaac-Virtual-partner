@@ -5,6 +5,10 @@ import pytest
 from atosaac_virtual_partner.character import CharacterProfile
 from atosaac_virtual_partner.context import RecentTurnsContextPolicy
 from atosaac_virtual_partner.conversation import ConversationService
+from atosaac_virtual_partner.dialogue_policy import (
+    DEFAULT_DIALOGUE_POLICY,
+    PassthroughDialoguePolicy,
+)
 from atosaac_virtual_partner.grounding import DEFAULT_RUNTIME_GROUNDING
 from atosaac_virtual_partner.message import Message, MessageRole
 from atosaac_virtual_partner.metrics import ProviderMetrics, ReplyMetrics
@@ -64,6 +68,10 @@ def test_conversation_includes_character_and_previous_turns() -> None:
             MessageRole.SYSTEM,
             DEFAULT_RUNTIME_GROUNDING.system_instructions(),
         ),
+        Message(
+            MessageRole.SYSTEM,
+            DEFAULT_DIALOGUE_POLICY.guide("你好", ()).system_instructions,
+        ),
         Message(MessageRole.USER, "你好"),
     )
     assert provider.contexts[1] == (
@@ -71,6 +79,16 @@ def test_conversation_includes_character_and_previous_turns() -> None:
         Message(
             MessageRole.SYSTEM,
             DEFAULT_RUNTIME_GROUNDING.system_instructions(),
+        ),
+        Message(
+            MessageRole.SYSTEM,
+            DEFAULT_DIALOGUE_POLICY.guide(
+                "还记得吗？",
+                (
+                    Message(MessageRole.USER, "你好"),
+                    Message(MessageRole.ASSISTANT, "第一条回复"),
+                ),
+            ).system_instructions,
         ),
         Message(MessageRole.USER, "你好"),
         Message(MessageRole.ASSISTANT, "第一条回复"),
@@ -99,14 +117,14 @@ def test_streaming_conversation_commits_history_only_after_completion() -> None:
     provider = RecordingReplyProvider((("第一段", "第二段"),))
     conversation = ConversationService(provider, build_character())
 
-    reply_stream = conversation.stream_response("你好")
+    reply_stream = conversation.stream_response("普通消息")
 
     assert next(reply_stream) == "第一段"
     assert tuple(conversation.history) == ()
     assert conversation.last_metrics is None
     assert list(reply_stream) == ["第二段"]
     assert tuple(conversation.history) == (
-        Message(MessageRole.USER, "你好"),
+        Message(MessageRole.USER, "普通消息"),
         Message(MessageRole.ASSISTANT, "第一段第二段"),
     )
 
@@ -116,7 +134,7 @@ def test_cancelled_stream_does_not_record_partial_reply() -> None:
     conversation = ConversationService(provider, build_character())
     cancellation_token = CancellationToken()
     reply_stream = conversation.stream_response(
-        "你好",
+        "普通消息",
         cancellation_token=cancellation_token,
     )
 
@@ -245,3 +263,53 @@ def test_failed_initiative_does_not_record_event_or_partial_reply() -> None:
         list(conversation.stream_initiative("idle event"))
 
     assert tuple(conversation.history) == ()
+
+
+def test_conversation_can_disable_per_turn_dialogue_guidance() -> None:
+    provider = RecordingReplyProvider((("普通回复",),))
+    conversation = ConversationService(
+        provider,
+        build_character(),
+        dialogue_policy=PassthroughDialoguePolicy(),
+    )
+
+    assert conversation.respond("普通陈述") == "普通回复"
+    assert provider.contexts[0] == (
+        Message(MessageRole.SYSTEM, "Be independent and playful."),
+        Message(
+            MessageRole.SYSTEM,
+            DEFAULT_RUNTIME_GROUNDING.system_instructions(),
+        ),
+        Message(MessageRole.USER, "普通陈述"),
+    )
+
+
+def test_strict_turn_buffers_and_replaces_an_invalid_generated_reply() -> None:
+    provider = RecordingReplyProvider((("晚上好。", "你今天怎么样？"),))
+    conversation = ConversationService(provider, build_character())
+
+    reply_stream = conversation.stream_response("晚上好～")
+
+    assert next(reply_stream) == "晚上好～你这个波浪号把气氛带亮了。"
+    assert tuple(conversation.history) == ()
+    assert list(reply_stream) == []
+    assert conversation.last_metrics is not None
+    assert conversation.last_metrics.local_fallback_used is True
+    assert tuple(conversation.history) == (
+        Message(MessageRole.USER, "晚上好～"),
+        Message(
+            MessageRole.ASSISTANT,
+            "晚上好～你这个波浪号把气氛带亮了。",
+        ),
+    )
+
+
+def test_strict_turn_keeps_a_valid_buffered_reply() -> None:
+    provider = RecordingReplyProvider((("晚上好～", "这个开场挺轻快。"),))
+    conversation = ConversationService(provider, build_character())
+
+    assert list(conversation.stream_response("晚上好～")) == [
+        "晚上好～这个开场挺轻快。"
+    ]
+    assert conversation.last_metrics is not None
+    assert conversation.last_metrics.local_fallback_used is False

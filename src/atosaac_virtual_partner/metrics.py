@@ -32,6 +32,7 @@ class ReplyMetrics:
     first_text_seconds: float
     total_seconds: float
     provider: ProviderMetrics | None = None
+    local_fallback_used: bool = False
 
 
 def format_reply_metrics(metrics: ReplyMetrics) -> str:
@@ -49,4 +50,6 @@ def format_reply_metrics(metrics: ReplyMetrics) -> str:
         speed = provider.output_tokens_per_second
         if speed is not None:
             parts.append(f"生成 {speed:.1f} tokens/s")
+    if metrics.local_fallback_used:
+        parts.append("已用本地回退")
     return "[指标] " + " | ".join(parts)

@@ -12,6 +12,8 @@ def test_default_grounding_reports_actual_missing_capabilities() -> None:
     assert "默认只用“你”" in instructions
     assert "不得声称自己在现实中吃过、见过或听说某事" in instructions
     assert "不得用“又”“上次”等词预设" in instructions
+    assert "当前没有身体或现实活动状态" in instructions
+    assert "不得声称自己刚睡醒" in instructions
 
 
 def test_grounding_names_only_explicitly_enabled_capabilities() -> None:

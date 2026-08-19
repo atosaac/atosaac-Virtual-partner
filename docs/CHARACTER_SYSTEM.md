@@ -16,6 +16,9 @@
   instructions, and source.
 - `ConversationService` combines the runtime profile, runtime grounding,
   conversation history, and current user message before requesting a reply.
+- `DialoguePolicy` adds replaceable guidance for the current user turn, keeping
+  ordinary sharing from being treated as an implicit request for advice. The
+  guidance is runtime context, not part of the stable personality or saved chat.
 
 Keeping the full design source separate avoids spending context tokens on dozens
 of examples during every reply. The runtime profile should contain stable identity

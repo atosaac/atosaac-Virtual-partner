@@ -8,6 +8,7 @@ from .character import (
     load_default_character,
 )
 from .conversation import ConversationService
+from .dialogue_policy import DEFAULT_DIALOGUE_POLICY, DialoguePolicy
 from .initiative import IdleInitiativePolicy
 from .metrics import format_reply_metrics
 from .reply import (
@@ -54,6 +55,7 @@ def run_chat(
     show_metrics: bool = False,
     initiative_policy: IdleInitiativePolicy | None = None,
     timed_input_func: TimedInput | None = None,
+    dialogue_policy: DialoguePolicy = DEFAULT_DIALOGUE_POLICY,
 ) -> None:
     """Run an interactive terminal chat session."""
     read = input if input_func is None else input_func
@@ -72,7 +74,11 @@ def run_chat(
     character = (
         load_default_character() if character_profile is None else character_profile
     )
-    conversation = ConversationService(provider, character)
+    conversation = ConversationService(
+        provider,
+        character,
+        dialogue_policy=dialogue_policy,
+    )
 
     write(f"{character.name}: {WELCOME_TEXT}")
     initiatives_since_user_activity = 0

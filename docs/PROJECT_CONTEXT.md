@@ -22,11 +22,12 @@ foundation so models and services can be changed without rewriting the product.
 
 ## Current state
 
-The project currently exposes two terminal commands:
+The project currently exposes three terminal commands:
 
 ```text
 atosaac-virtual-partner health
 atosaac-virtual-partner chat
+atosaac-virtual-partner speak
 ```
 
 - `health` reports local environment information.
@@ -36,6 +37,16 @@ atosaac-virtual-partner chat
   v0.26 design. An external Markdown profile can be selected for a chat session.
 - Character personality is separated from `RuntimeGrounding`, which tells every
   profile the memory, tool, and parental-title facts actually available now.
+- A replaceable `DialoguePolicy` gives each user turn a short reply mode. The
+  initial local heuristic distinguishes greetings, sharing, relational feedback,
+  questions, and help requests without another model call. It discourages
+  consecutive interview-like questions and handles light corrections without
+  invented excuses or appeasement. Guidance is not persisted as conversation
+  history.
+- Strict greetings and relational repairs buffer their short model draft for
+  structural validation. Invalid questions, defensive patterns, or appeasement are
+  replaced by a reviewed local line without a second inference call. Metrics mark
+  the fallback explicitly; other turn types continue to stream normally.
 - The deterministic local mock provider validates the flow but does not yet
   exhibit the supplied character behavior.
 - An optional Ollama reply provider sends character instructions and a bounded
@@ -164,6 +175,8 @@ ASR（自动语音识别）把用户说话的音频转换成文本。TTS（文�
 - Convert reviewed positive and rejected character examples into behavioral tests.
 - Add a provider-independent evaluation runner for the structured v0.27 synthetic
   regression cases before treating prompt changes or training as improvements.
+- Measure unnecessary-question and unrequested-advice rates on fixed model/version
+  settings before replacing the local turn policy with a learned classifier.
 - Add runtime character state and human-reviewed revision proposals without
   allowing the model to overwrite its baseline.
 - Evolve opt-in idle initiative into a user-controlled scheduler with quiet hours,
