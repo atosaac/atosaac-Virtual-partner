@@ -48,3 +48,21 @@ def test_format_reply_metrics_reports_local_fallback_without_content() -> None:
     )
 
     assert summary == "[指标] 首字 0.50s | 总耗时 0.50s | 已用本地回退"
+
+
+def test_format_reply_metrics_reports_content_free_grounding_risks() -> None:
+    summary = format_reply_metrics(
+        ReplyMetrics(
+            first_text_seconds=0.3,
+            total_seconds=0.8,
+            grounding_risks=(
+                "unsupported_memory",
+                "unsupported_perception",
+                "unsupported_self_history",
+            ),
+        )
+    )
+
+    assert summary == (
+        "[指标] 首字 0.30s | 总耗时 0.80s | 事实风险 记忆、感知、自身经历"
+    )

@@ -313,3 +313,17 @@ def test_strict_turn_keeps_a_valid_buffered_reply() -> None:
     ]
     assert conversation.last_metrics is not None
     assert conversation.last_metrics.local_fallback_used is False
+
+
+def test_conversation_records_content_free_grounding_risks() -> None:
+    provider = RecordingReplyProvider(
+        (("你上次煮的那锅粥，我到现在还记得。",),)
+    )
+    conversation = ConversationService(provider, build_character())
+
+    conversation.respond("我会做饭。")
+
+    assert conversation.last_metrics is not None
+    assert conversation.last_metrics.grounding_risks == (
+        "unsupported_memory",
+    )

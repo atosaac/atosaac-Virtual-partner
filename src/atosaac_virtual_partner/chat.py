@@ -1,4 +1,5 @@
 from collections.abc import Callable
+import re
 import select
 import sys
 
@@ -31,6 +32,16 @@ REPLY_ERROR_PREFIX = f"{DEFAULT_CHARACTER_NAME}: {REPLY_ERROR_TEXT}"
 CANCELLED_MESSAGE = f"{DEFAULT_CHARACTER_NAME}: {CANCELLED_TEXT}"
 
 TimedInput = Callable[[str, float], str | None]
+_TERMINAL_PROMPT_PREFIX = re.compile(r"^you\s*[:：]\s*", re.IGNORECASE)
+
+
+def normalize_terminal_user_text(text: str) -> str:
+    """Remove one accidentally pasted terminal prompt prefix."""
+    normalized_text = text.strip()
+    match = _TERMINAL_PROMPT_PREFIX.match(normalized_text)
+    if match is None:
+        return normalized_text
+    return normalized_text[match.end() :].strip()
 
 
 def _write_stdout_fragment(text: str) -> None:
@@ -95,10 +106,10 @@ def run_chat(
                 if timed_value is None:
                     is_initiative = True
                 else:
-                    user_text = timed_value.strip()
+                    user_text = normalize_terminal_user_text(timed_value)
                     initiatives_since_user_activity = 0
             else:
-                user_text = read("You: ").strip()
+                user_text = normalize_terminal_user_text(read("You: "))
                 initiatives_since_user_activity = 0
         except (EOFError, KeyboardInterrupt):
             write(f"{character.name}: {GOODBYE_TEXT}")

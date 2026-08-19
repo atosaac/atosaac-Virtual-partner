@@ -47,6 +47,12 @@ atosaac-virtual-partner speak
   structural validation. Invalid questions, defensive patterns, or appeasement are
   replaced by a reviewed local line without a second inference call. Metrics mark
   the fallback explicitly; other turn types continue to stream normally.
+- Runtime grounding positively distinguishes marked imagination from factual
+  memory or perception. A local `ReplyGroundingAuditor` adds content-free risk
+  labels for memory, perception, physical state, and invented self-history to
+  opt-in metrics without another model call or automatic rewriting.
+- The terminal strips one accidentally pasted leading `You:` prompt prefix before
+  exit-command and conversation handling; non-terminal interfaces are unchanged.
 - The deterministic local mock provider validates the flow but does not yet
   exhibit the supplied character behavior.
 - An optional Ollama reply provider sends character instructions and a bounded

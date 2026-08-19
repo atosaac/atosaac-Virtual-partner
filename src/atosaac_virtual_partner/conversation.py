@@ -8,6 +8,10 @@ from .dialogue_policy import (
     DialogueGuidance,
     DialoguePolicy,
 )
+from .factuality import (
+    DEFAULT_REPLY_GROUNDING_AUDITOR,
+    ReplyGroundingAuditor,
+)
 from .grounding import DEFAULT_RUNTIME_GROUNDING, RuntimeGrounding
 from .message import Message, MessageRole
 from .metrics import ProviderMetrics, ReplyMetrics
@@ -25,12 +29,14 @@ class ConversationService:
         runtime_grounding: RuntimeGrounding = DEFAULT_RUNTIME_GROUNDING,
         context_window_policy: ContextWindowPolicy = DEFAULT_CONTEXT_WINDOW_POLICY,
         dialogue_policy: DialoguePolicy = DEFAULT_DIALOGUE_POLICY,
+        grounding_auditor: ReplyGroundingAuditor = DEFAULT_REPLY_GROUNDING_AUDITOR,
     ) -> None:
         self._reply_provider = reply_provider
         self._character = character
         self._runtime_grounding = runtime_grounding
         self._context_window_policy = context_window_policy
         self._dialogue_policy = dialogue_policy
+        self._grounding_auditor = grounding_auditor
         self._clock = clock
         self._history: list[Message] = []
         self._last_metrics: ReplyMetrics | None = None
@@ -156,6 +162,10 @@ class ConversationService:
             raise ValueError("Reply provider returned no measurable text")
 
         total_seconds = self._clock() - started_at
+        grounding_audit = self._grounding_auditor.audit(
+            reply_text,
+            (*selected_history, trigger_message),
+        )
 
         self._history.extend(
             (
@@ -168,6 +178,9 @@ class ConversationService:
             total_seconds=total_seconds,
             provider=provider_metrics,
             local_fallback_used=local_fallback_used,
+            grounding_risks=tuple(
+                risk.value for risk in grounding_audit.risks
+            ),
         )
 
     def respond(

@@ -7,6 +7,7 @@ from atosaac_virtual_partner.chat import (
     GOODBYE_MESSAGE,
     REPLY_ERROR_PREFIX,
     WELCOME_MESSAGE,
+    normalize_terminal_user_text,
     run_chat,
 )
 from atosaac_virtual_partner.character import CharacterProfile
@@ -31,6 +32,25 @@ def test_run_chat_replies_until_user_exits() -> None:
     run_chat(input_func=read, output_func=output.append)
 
     assert prompts == ["You: ", "You: ", "You: "]
+    assert output == [
+        WELCOME_MESSAGE,
+        "atosaac: 我听到了：你好",
+        GOODBYE_MESSAGE,
+    ]
+
+
+def test_normalize_terminal_user_text_removes_one_prompt_prefix() -> None:
+    assert normalize_terminal_user_text(" You: 你好 ") == "你好"
+    assert normalize_terminal_user_text("you：退出") == "退出"
+    assert normalize_terminal_user_text("You: You: 原样") == "You: 原样"
+
+
+def test_run_chat_ignores_an_accidentally_pasted_prompt_prefix() -> None:
+    answers: Iterator[str] = iter(["You: 你好", "退出"])
+    output: list[str] = []
+
+    run_chat(input_func=lambda _prompt: next(answers), output_func=output.append)
+
     assert output == [
         WELCOME_MESSAGE,
         "atosaac: 我听到了：你好",

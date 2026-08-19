@@ -33,6 +33,7 @@ class ReplyMetrics:
     total_seconds: float
     provider: ProviderMetrics | None = None
     local_fallback_used: bool = False
+    grounding_risks: tuple[str, ...] = ()
 
 
 def format_reply_metrics(metrics: ReplyMetrics) -> str:
@@ -52,4 +53,15 @@ def format_reply_metrics(metrics: ReplyMetrics) -> str:
             parts.append(f"生成 {speed:.1f} tokens/s")
     if metrics.local_fallback_used:
         parts.append("已用本地回退")
+    if metrics.grounding_risks:
+        risk_labels = {
+            "unsupported_memory": "记忆",
+            "unsupported_perception": "感知",
+            "unsupported_physical_state": "身体状态",
+            "unsupported_self_history": "自身经历",
+        }
+        labels = (
+            risk_labels.get(risk, risk) for risk in metrics.grounding_risks
+        )
+        parts.append("事实风险 " + "、".join(labels))
     return "[指标] " + " | ".join(parts)

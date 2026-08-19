@@ -14,6 +14,10 @@ def test_default_grounding_reports_actual_missing_capabilities() -> None:
     assert "不得用“又”“上次”等词预设" in instructions
     assert "当前没有身体或现实活动状态" in instructions
     assert "不得声称自己刚睡醒" in instructions
+    assert "可以自由使用未来假设、童话联想和比喻" in instructions
+    assert "不能把想象写成看见用户房间" in instructions
+    assert "不得改用“那次”“当时”或“后来”" in instructions
+    assert "如果真发生过" in instructions
 
 
 def test_grounding_names_only_explicitly_enabled_capabilities() -> None:
