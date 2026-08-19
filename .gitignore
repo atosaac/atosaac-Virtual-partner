@@ -28,6 +28,9 @@ artifacts/
 *.ckpt
 *.pth
 *.pt
+*.sqlite
+*.sqlite3
+*.db
 
 # 日志
 *.log

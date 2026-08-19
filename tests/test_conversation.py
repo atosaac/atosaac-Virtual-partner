@@ -11,6 +11,7 @@ from atosaac_virtual_partner.dialogue_policy import (
 )
 from atosaac_virtual_partner.grounding import DEFAULT_RUNTIME_GROUNDING
 from atosaac_virtual_partner.message import Message, MessageRole
+from atosaac_virtual_partner.grounding import RuntimeGrounding
 from atosaac_virtual_partner.metrics import ProviderMetrics, ReplyMetrics
 from atosaac_virtual_partner.reply import (
     CancellationToken,
@@ -326,4 +327,36 @@ def test_conversation_records_content_free_grounding_risks() -> None:
     assert conversation.last_metrics is not None
     assert conversation.last_metrics.grounding_risks == (
         "unsupported_memory",
+    )
+
+
+def test_conversation_injects_memory_as_system_data_without_persisting_it() -> None:
+    class StaticMemoryContext:
+        def system_instructions(self, query: str) -> str:
+            assert query == "今天上班。"
+            return "# 长期记忆\n[\"你在金店工作。\"]"
+
+    provider = RecordingReplyProvider((("店里应该挺忙。",),))
+    grounding = RuntimeGrounding(persistent_memory_available=True)
+    conversation = ConversationService(
+        provider,
+        build_character(),
+        runtime_grounding=grounding,
+        memory_context_provider=StaticMemoryContext(),
+    )
+
+    conversation.respond("今天上班。")
+
+    assert provider.contexts[0][:4] == (
+        Message(MessageRole.SYSTEM, "Be independent and playful."),
+        Message(MessageRole.SYSTEM, grounding.system_instructions()),
+        Message(MessageRole.MEMORY, '# 长期记忆\n["你在金店工作。"]'),
+        Message(
+            MessageRole.SYSTEM,
+            DEFAULT_DIALOGUE_POLICY.guide("今天上班。", ()).system_instructions,
+        ),
+    )
+    assert tuple(conversation.history) == (
+        Message(MessageRole.USER, "今天上班。"),
+        Message(MessageRole.ASSISTANT, "店里应该挺忙。"),
     )

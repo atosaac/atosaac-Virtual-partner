@@ -70,6 +70,16 @@ def test_recent_turns_policy_rejects_system_messages_in_history() -> None:
         RecentTurnsContextPolicy().select_history(invalid_history)
 
 
+def test_recent_turns_policy_rejects_memory_messages_in_history() -> None:
+    invalid_history = (
+        Message(MessageRole.USER, "hello"),
+        Message(MessageRole.MEMORY, "retrieved data"),
+    )
+
+    with pytest.raises(ValueError, match="memory messages"):
+        RecentTurnsContextPolicy().select_history(invalid_history)
+
+
 def test_recent_turns_policy_treats_application_event_as_a_turn_start() -> None:
     history = (
         Message(MessageRole.USER, "user 1"),

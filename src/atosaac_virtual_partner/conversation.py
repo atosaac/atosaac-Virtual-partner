@@ -14,6 +14,7 @@ from .factuality import (
 )
 from .grounding import DEFAULT_RUNTIME_GROUNDING, RuntimeGrounding
 from .message import Message, MessageRole
+from .memory_context import MemoryContextProvider
 from .metrics import ProviderMetrics, ReplyMetrics
 from .reply import CancellationToken, ReplyProvider
 
@@ -30,6 +31,7 @@ class ConversationService:
         context_window_policy: ContextWindowPolicy = DEFAULT_CONTEXT_WINDOW_POLICY,
         dialogue_policy: DialoguePolicy = DEFAULT_DIALOGUE_POLICY,
         grounding_auditor: ReplyGroundingAuditor = DEFAULT_REPLY_GROUNDING_AUDITOR,
+        memory_context_provider: MemoryContextProvider | None = None,
     ) -> None:
         self._reply_provider = reply_provider
         self._character = character
@@ -37,6 +39,7 @@ class ConversationService:
         self._context_window_policy = context_window_policy
         self._dialogue_policy = dialogue_policy
         self._grounding_auditor = grounding_auditor
+        self._memory_context_provider = memory_context_provider
         self._clock = clock
         self._history: list[Message] = []
         self._last_metrics: ReplyMetrics | None = None
@@ -105,6 +108,7 @@ class ConversationService:
             provider_metrics = metrics
 
         selected_history = self._context_window_policy.select_history(self._history)
+        memory_message: Message | None = None
         system_context = [
             Message(MessageRole.SYSTEM, self._character.instructions),
             Message(
@@ -112,6 +116,13 @@ class ConversationService:
                 self._runtime_grounding.system_instructions(),
             ),
         ]
+        if self._memory_context_provider is not None:
+            memory_instructions = self._memory_context_provider.system_instructions(
+                trigger_message.content
+            )
+            if memory_instructions is not None:
+                memory_message = Message(MessageRole.MEMORY, memory_instructions)
+                system_context.append(memory_message)
         if dialogue_guidance is not None:
             system_context.append(
                 Message(
@@ -162,9 +173,13 @@ class ConversationService:
             raise ValueError("Reply provider returned no measurable text")
 
         total_seconds = self._clock() - started_at
+        grounding_evidence = [*selected_history]
+        if memory_message is not None:
+            grounding_evidence.append(memory_message)
+        grounding_evidence.append(trigger_message)
         grounding_audit = self._grounding_auditor.audit(
             reply_text,
-            (*selected_history, trigger_message),
+            grounding_evidence,
         )
 
         self._history.extend(

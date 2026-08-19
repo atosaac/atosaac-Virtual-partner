@@ -16,7 +16,7 @@ NANOSECONDS_PER_SECOND = 1_000_000_000
 
 
 def _ollama_role(message_role: MessageRole) -> str:
-    if message_role is MessageRole.EVENT:
+    if message_role in {MessageRole.EVENT, MessageRole.MEMORY}:
         return MessageRole.SYSTEM.value
     return message_role.value
 

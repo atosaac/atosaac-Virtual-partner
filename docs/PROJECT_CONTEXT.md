@@ -61,6 +61,13 @@ atosaac-virtual-partner speak
 - Complete committed history remains in memory for the session, while a replaceable
   `ContextWindowPolicy` sends the latest eight complete turns by default. No
   summary or older memory is fabricated when earlier turns leave the prompt.
+- An opt-in explicit long-term-memory MVP stores only user-added records in a
+  local SQLite database outside the repository. Management commands can add,
+  inspect, forget, or confirmed-clear records; full chat transcripts are not
+  persisted.
+- A replaceable bounded lexical memory context scans recent explicit records and
+  injects only related data within count and character limits. It adds no model
+  call or embedding dependency, and unrelated records are normally omitted.
 - The terminal can opt into one idle-triggered initiative with a configured
   timeout. The application records a distinct event plus the completed assistant
   reply, then waits for real user activity before it may trigger again.
@@ -72,8 +79,8 @@ atosaac-virtual-partner speak
 - Each completed reply can expose in-memory first-text latency, end-to-end latency,
   input/output token counts, and generation speed. Metrics are opt-in at the CLI
   and contain no prompt, reply, or character text.
-- No persistent memory store, realtime-data tool gateway, audio pipeline, avatar,
-  or cloud service is connected yet.
+- No automatic memory-candidate flow, session archive, realtime-data tool gateway,
+  audio pipeline, avatar, or cloud service is connected yet.
 - An **experimental TTS baseline** now exposes a `speak` CLI command through a
   replaceable `SpeechSynthesizer` protocol and macOS `say`. It only validates the
   text-to-audio boundary: it does not train or clone a voice, does not speak chat
