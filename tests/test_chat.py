@@ -10,6 +10,7 @@ from atosaac_virtual_partner.chat import (
     run_chat,
 )
 from atosaac_virtual_partner.character import CharacterProfile
+from atosaac_virtual_partner.initiative import IdleInitiativePolicy
 from atosaac_virtual_partner.message import Message
 from atosaac_virtual_partner.reply import (
     CancellationToken,
@@ -266,3 +267,37 @@ def test_run_chat_optionally_shows_metrics_without_message_content() -> None:
     assert output[2].startswith("[指标] 首字 ")
     assert "私人内容" not in output[2]
     assert output[3] == GOODBYE_MESSAGE
+
+
+def test_run_chat_speaks_once_after_idle_and_then_waits_for_user() -> None:
+    timed_answers: Iterator[str | None] = iter([None, "退出"])
+    blocking_answers: Iterator[str] = iter(["这是我的答案"])
+    timed_calls: list[tuple[str, float]] = []
+    output: list[str] = []
+
+    def timed_read(prompt: str, timeout_seconds: float) -> str | None:
+        timed_calls.append((prompt, timeout_seconds))
+        return next(timed_answers)
+
+    run_chat(
+        input_func=lambda _prompt: next(blocking_answers),
+        timed_input_func=timed_read,
+        output_func=output.append,
+        initiative_policy=IdleInitiativePolicy(idle_seconds=30),
+    )
+
+    assert timed_calls == [("You: ", 30), ("You: ", 30)]
+    assert output == [
+        WELCOME_MESSAGE,
+        "atosaac: 我刚想到一个问题：你现在最想把哪件小事做好？",
+        "atosaac: 我听到了：这是我的答案",
+        GOODBYE_MESSAGE,
+    ]
+
+
+def test_run_chat_requires_timed_reader_for_custom_initiative_input() -> None:
+    with pytest.raises(ValueError, match="timed input"):
+        run_chat(
+            input_func=lambda _prompt: "退出",
+            initiative_policy=IdleInitiativePolicy(idle_seconds=30),
+        )

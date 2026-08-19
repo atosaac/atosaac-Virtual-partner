@@ -138,6 +138,34 @@ def test_ollama_provider_does_not_return_separate_thinking(monkeypatch) -> None:
     assert reply == "只返回最终回复。"
 
 
+def test_ollama_provider_maps_application_event_to_system_role(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_urlopen(request, timeout):
+        captured["request"] = request
+        return FakeResponse(
+            (
+                {
+                    "message": {"role": "assistant", "content": "主动问候"},
+                    "done": True,
+                },
+            )
+        )
+
+    monkeypatch.setattr(ollama, "urlopen", fake_urlopen)
+    provider = OllamaReplyProvider(model="qwen3:4b-instruct")
+
+    assert provider.generate_reply(
+        (Message(MessageRole.EVENT, "The user is idle."),)
+    ) == "主动问候"
+
+    request = captured["request"]
+    payload = json.loads(request.data.decode("utf-8"))
+    assert payload["messages"] == [
+        {"role": "system", "content": "The user is idle."}
+    ]
+
+
 def test_ollama_provider_reports_api_error(monkeypatch) -> None:
     def fail_with_http_error(request, timeout):
         raise HTTPError(

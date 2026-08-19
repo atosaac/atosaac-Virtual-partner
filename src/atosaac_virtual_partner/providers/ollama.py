@@ -5,7 +5,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse, urlunparse
 from urllib.request import Request, urlopen
 
-from ..message import Message
+from ..message import Message, MessageRole
 from ..metrics import ProviderMetrics
 from ..reply import CancellationToken, MetricsCallback, ReplyProviderError
 
@@ -13,6 +13,12 @@ from ..reply import CancellationToken, MetricsCallback, ReplyProviderError
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
 DEFAULT_TIMEOUT_SECONDS = 120.0
 NANOSECONDS_PER_SECOND = 1_000_000_000
+
+
+def _ollama_role(message_role: MessageRole) -> str:
+    if message_role is MessageRole.EVENT:
+        return MessageRole.SYSTEM.value
+    return message_role.value
 
 
 def _build_chat_url(base_url: str) -> str:
@@ -144,7 +150,7 @@ class OllamaReplyProvider:
         payload = {
             "model": self.model,
             "messages": [
-                {"role": message.role.value, "content": message.content}
+                {"role": _ollama_role(message.role), "content": message.content}
                 for message in messages
             ],
             "stream": True,

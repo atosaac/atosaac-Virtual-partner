@@ -60,12 +60,17 @@ class MockReplyProvider:
         token = cancellation_token or CancellationToken()
         token.raise_if_cancelled()
         for message in reversed(messages):
+            if message.role is MessageRole.EVENT:
+                yield "我刚想到一个问题：你现在最想把哪件小事做好？"
+                if metrics_callback is not None:
+                    metrics_callback(ProviderMetrics(provider_name="mock"))
+                return
             if message.role is MessageRole.USER:
                 yield f"我听到了：{message.content}"
                 if metrics_callback is not None:
                     metrics_callback(ProviderMetrics(provider_name="mock"))
                 return
-        raise ValueError("A user message is required to generate a reply")
+        raise ValueError("A user message or application event is required")
 
     def generate_reply(self, messages: Sequence[Message]) -> str:
         """Return a complete reply for callers that do not consume streams."""

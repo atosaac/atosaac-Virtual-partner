@@ -38,9 +38,15 @@ atosaac-virtual-partner chat
   profile the memory, tool, and parental-title facts actually available now.
 - The deterministic local mock provider validates the flow but does not yet
   exhibit the supplied character behavior.
-- An optional Ollama reply provider sends the character instructions and complete
-  in-memory conversation to a configurable local Chat API. It consumes NDJSON
+- An optional Ollama reply provider sends character instructions and a bounded
+  recent conversation window to a configurable local Chat API. It consumes NDJSON
   reply fragments and exposes them to the CLI as they arrive.
+- Complete committed history remains in memory for the session, while a replaceable
+  `ContextWindowPolicy` sends the latest eight complete turns by default. No
+  summary or older memory is fabricated when earlier turns leave the prompt.
+- The terminal can opt into one idle-triggered initiative with a configured
+  timeout. The application records a distinct event plus the completed assistant
+  reply, then waits for real user activity before it may trigger again.
 - Reply generation has an explicit cancellation token. In a macOS terminal, the
   CLI maps `Control+C` (not `Command+C`) during generation to cancellation and
   returns to the next prompt.
@@ -141,6 +147,8 @@ ASR（自动语音识别）把用户说话的音频转换成文本。TTS（文�
 ### Phase 1: text foundation
 
 - Stabilize the CLI conversation loop and exit/error behavior.
+- Measure the recent-turn context budget in longer chats before adding triggered
+  summaries; retain full-history fallback for comparison.
 - Add session persistence only after retention and deletion behavior is defined.
 
 ### Phase 2: tools, memory, and character
@@ -158,6 +166,9 @@ ASR（自动语音识别）把用户说话的音频转换成文本。TTS（文�
   regression cases before treating prompt changes or training as improvements.
 - Add runtime character state and human-reviewed revision proposals without
   allowing the model to overwrite its baseline.
+- Evolve opt-in idle initiative into a user-controlled scheduler with quiet hours,
+  topic selection, notification permissions, and TTS playback after text behavior
+  is evaluated.
 
 ### Phase 3: voice
 
