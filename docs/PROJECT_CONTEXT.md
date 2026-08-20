@@ -84,7 +84,11 @@ atosaac-virtual-partner speak
   input/output token counts, and generation speed. Metrics are opt-in at the CLI
   and contain no prompt, reply, or character text.
 - No semantic memory extractor, event expiry, session archive, realtime-data tool
-  gateway, audio pipeline, avatar, or cloud service is connected yet.
+  adapter, audio pipeline, avatar, or cloud service is connected yet.
+- A provider-independent tool gateway now validates bounded scalar arguments,
+  resolves explicitly registered capabilities, checks read-only versus external
+  action permissions, carries adapter timeout budgets, and returns safe structured
+  failures. No tool permission is granted merely by registration.
 - An **experimental TTS baseline** now exposes a `speak` CLI command through a
   replaceable `SpeechSynthesizer` protocol and macOS `say`. It only validates the
   text-to-audio boundary: it does not train or clone a voice, does not speak chat
