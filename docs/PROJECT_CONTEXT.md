@@ -89,6 +89,11 @@ atosaac-virtual-partner speak
   resolves explicitly registered capabilities, checks read-only versus external
   action permissions, carries adapter timeout budgets, and returns safe structured
   failures. No tool permission is granted merely by registration.
+- A read-only Open-Meteo adapter can resolve a configured city and return bounded
+  current plus same-day weather with source and observation time. It uses fixed
+  endpoints, a shared request timeout, a ten-minute in-memory cache, and an
+  explicitly stale offline fallback capped at six hours. Chat integration is the
+  next layer; the adapter alone grants no model network access.
 - An **experimental TTS baseline** now exposes a `speak` CLI command through a
   replaceable `SpeechSynthesizer` protocol and macOS `say`. It only validates the
   text-to-audio boundary: it does not train or clone a voice, does not speak chat
