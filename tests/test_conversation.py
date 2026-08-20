@@ -9,8 +9,13 @@ from atosaac_virtual_partner.dialogue_policy import (
     DEFAULT_DIALOGUE_POLICY,
     PassthroughDialoguePolicy,
 )
-from atosaac_virtual_partner.grounding import DEFAULT_RUNTIME_GROUNDING
+from atosaac_virtual_partner.grounding import (
+    DEFAULT_RUNTIME_GROUNDING,
+    RuntimeGrounding,
+)
 from atosaac_virtual_partner.message import Message, MessageRole
+from atosaac_virtual_partner.memory import MemoryStoreError
+from atosaac_virtual_partner.memory_capture import MemoryCaptureResult
 from atosaac_virtual_partner.metrics import ProviderMetrics, ReplyMetrics
 from atosaac_virtual_partner.reply import (
     CancellationToken,
@@ -42,6 +47,11 @@ class RecordingReplyProvider:
                     generation_seconds=0.5,
                 )
             )
+
+
+class UnexpectedMemoryCapture:
+    def capture(self, _user_text: str) -> MemoryCaptureResult:
+        raise AssertionError("incomplete turns must not become durable memory")
 
 
 def build_character() -> CharacterProfile:
@@ -131,7 +141,11 @@ def test_streaming_conversation_commits_history_only_after_completion() -> None:
 
 def test_cancelled_stream_does_not_record_partial_reply() -> None:
     provider = RecordingReplyProvider((("第一段", "第二段"),))
-    conversation = ConversationService(provider, build_character())
+    conversation = ConversationService(
+        provider,
+        build_character(),
+        memory_capture=UnexpectedMemoryCapture(),
+    )
     cancellation_token = CancellationToken()
     reply_stream = conversation.stream_response(
         "普通消息",
@@ -158,7 +172,11 @@ def test_failed_stream_does_not_record_partial_reply() -> None:
             yield "第一段"
             raise ReplyProviderError("stream failed")
 
-    conversation = ConversationService(FailingReplyProvider(), build_character())
+    conversation = ConversationService(
+        FailingReplyProvider(),
+        build_character(),
+        memory_capture=UnexpectedMemoryCapture(),
+    )
 
     with pytest.raises(ReplyProviderError, match="stream failed"):
         list(conversation.stream_response("你好"))
@@ -327,3 +345,115 @@ def test_conversation_records_content_free_grounding_risks() -> None:
     assert conversation.last_metrics.grounding_risks == (
         "unsupported_memory",
     )
+
+
+def test_conversation_injects_memory_as_system_data_without_persisting_it() -> None:
+    class StaticMemoryContext:
+        def system_instructions(self, query: str) -> str:
+            assert query == "今天上班。"
+            return "# 长期记忆\n[\"你在金店工作。\"]"
+
+    provider = RecordingReplyProvider((("店里应该挺忙。",),))
+    grounding = RuntimeGrounding(persistent_memory_available=True)
+    conversation = ConversationService(
+        provider,
+        build_character(),
+        runtime_grounding=grounding,
+        memory_context_provider=StaticMemoryContext(),
+    )
+
+    conversation.respond("今天上班。")
+
+    assert provider.contexts[0][:4] == (
+        Message(MessageRole.SYSTEM, "Be independent and playful."),
+        Message(MessageRole.SYSTEM, grounding.system_instructions()),
+        Message(MessageRole.MEMORY, '# 长期记忆\n["你在金店工作。"]'),
+        Message(
+            MessageRole.SYSTEM,
+            DEFAULT_DIALOGUE_POLICY.guide("今天上班。", ()).system_instructions,
+        ),
+    )
+    assert tuple(conversation.history) == (
+        Message(MessageRole.USER, "今天上班。"),
+        Message(MessageRole.ASSISTANT, "店里应该挺忙。"),
+    )
+
+
+def test_conversation_captures_memory_only_after_completed_user_turn() -> None:
+    class RecordingCapture:
+        def __init__(self) -> None:
+            self.user_texts: list[str] = []
+
+        def capture(self, user_text: str) -> MemoryCaptureResult:
+            self.user_texts.append(user_text)
+            return MemoryCaptureResult(created=1)
+
+    provider = RecordingReplyProvider((("收到", "了。"),))
+    capture = RecordingCapture()
+    conversation = ConversationService(
+        provider,
+        build_character(),
+        memory_capture=capture,
+    )
+
+    reply_stream = conversation.stream_response("我喜欢蓝色。")
+    assert next(reply_stream) == "收到"
+    assert capture.user_texts == []
+
+    assert list(reply_stream) == ["了。"]
+    assert capture.user_texts == ["我喜欢蓝色。"]
+    assert conversation.last_metrics is not None
+    assert conversation.last_metrics.memory_created == 1
+
+
+def test_conversation_skips_memory_capture_for_application_event() -> None:
+    class UnexpectedCapture:
+        def capture(self, _user_text: str) -> MemoryCaptureResult:
+            raise AssertionError("initiative must not become user memory")
+
+    provider = RecordingReplyProvider((("主动问候",),))
+    conversation = ConversationService(
+        provider,
+        build_character(),
+        memory_capture=UnexpectedCapture(),
+    )
+
+    assert conversation.initiate("idle event") == "主动问候"
+
+
+def test_conversation_falls_back_when_memory_read_fails() -> None:
+    class FailingMemoryContext:
+        def system_instructions(self, _query: str) -> str:
+            raise MemoryStoreError("database unavailable")
+
+    provider = RecordingReplyProvider((("仍然回复",),))
+    conversation = ConversationService(
+        provider,
+        build_character(),
+        runtime_grounding=RuntimeGrounding(persistent_memory_available=True),
+        memory_context_provider=FailingMemoryContext(),
+    )
+
+    assert conversation.respond("普通消息") == "仍然回复"
+    assert all(
+        message.role is not MessageRole.MEMORY for message in provider.contexts[0]
+    )
+    assert conversation.last_metrics is not None
+    assert conversation.last_metrics.memory_read_failed is True
+
+
+def test_conversation_reports_isolated_memory_capture_failure() -> None:
+    class FailingCapture:
+        def capture(self, _user_text: str) -> MemoryCaptureResult:
+            return MemoryCaptureResult(failed=True)
+
+    provider = RecordingReplyProvider((("正常回复",),))
+    conversation = ConversationService(
+        provider,
+        build_character(),
+        memory_capture=FailingCapture(),
+    )
+
+    assert conversation.respond("我喜欢蓝色。") == "正常回复"
+    assert conversation.last_metrics is not None
+    assert conversation.last_metrics.memory_capture_failed is True

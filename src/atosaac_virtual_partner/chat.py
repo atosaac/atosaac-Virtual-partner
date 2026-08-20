@@ -10,7 +10,11 @@ from .character import (
 )
 from .conversation import ConversationService
 from .dialogue_policy import DEFAULT_DIALOGUE_POLICY, DialoguePolicy
+from .grounding import DEFAULT_RUNTIME_GROUNDING, RuntimeGrounding
 from .initiative import IdleInitiativePolicy
+from .memory import MemoryStoreError
+from .memory_capture import MemoryCapture
+from .memory_context import MemoryContextProvider
 from .metrics import format_reply_metrics
 from .reply import (
     CancellationToken,
@@ -67,6 +71,9 @@ def run_chat(
     initiative_policy: IdleInitiativePolicy | None = None,
     timed_input_func: TimedInput | None = None,
     dialogue_policy: DialoguePolicy = DEFAULT_DIALOGUE_POLICY,
+    runtime_grounding: RuntimeGrounding = DEFAULT_RUNTIME_GROUNDING,
+    memory_context_provider: MemoryContextProvider | None = None,
+    memory_capture: MemoryCapture | None = None,
 ) -> None:
     """Run an interactive terminal chat session."""
     read = input if input_func is None else input_func
@@ -89,6 +96,9 @@ def run_chat(
         provider,
         character,
         dialogue_policy=dialogue_policy,
+        runtime_grounding=runtime_grounding,
+        memory_context_provider=memory_context_provider,
+        memory_capture=memory_capture,
     )
 
     write(f"{character.name}: {WELCOME_TEXT}")
@@ -154,7 +164,7 @@ def run_chat(
                 write_fragment("\n")
             write(f"{character.name}: {CANCELLED_TEXT}")
             continue
-        except ReplyProviderError as exc:
+        except (MemoryStoreError, ReplyProviderError) as exc:
             if is_initiative:
                 initiatives_since_user_activity += 1
             if started_stream and write_fragment is not None:

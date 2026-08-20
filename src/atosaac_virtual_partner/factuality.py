@@ -102,7 +102,7 @@ def _user_grounded_a_prior_event(
 ) -> bool:
     reply_characters = _content_characters(reply_text)
     for message in evidence:
-        if message.role is not MessageRole.USER:
+        if message.role not in {MessageRole.USER, MessageRole.MEMORY}:
             continue
         if _PRIOR_EVENT_PATTERN.search(message.content) and not _QUESTION_PATTERN.search(
             message.content

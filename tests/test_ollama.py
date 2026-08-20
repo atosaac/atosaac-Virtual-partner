@@ -166,6 +166,34 @@ def test_ollama_provider_maps_application_event_to_system_role(monkeypatch) -> N
     ]
 
 
+def test_ollama_provider_maps_memory_data_to_system_role(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_urlopen(request, timeout):
+        captured["request"] = request
+        return FakeResponse(
+            (
+                {
+                    "message": {"role": "assistant", "content": "记得。"},
+                    "done": True,
+                },
+            )
+        )
+
+    monkeypatch.setattr(ollama, "urlopen", fake_urlopen)
+    provider = OllamaReplyProvider(model="qwen3:4b-instruct")
+
+    assert provider.generate_reply(
+        (Message(MessageRole.MEMORY, '["用户在金店工作。"]'),)
+    ) == "记得。"
+
+    request = captured["request"]
+    payload = json.loads(request.data.decode("utf-8"))
+    assert payload["messages"] == [
+        {"role": "system", "content": '["用户在金店工作。"]'}
+    ]
+
+
 def test_ollama_provider_reports_api_error(monkeypatch) -> None:
     def fail_with_http_error(request, timeout):
         raise HTTPError(

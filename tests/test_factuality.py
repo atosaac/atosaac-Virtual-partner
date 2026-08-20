@@ -28,6 +28,21 @@ def test_auditor_accepts_prior_event_grounded_by_user() -> None:
     assert result.risks == ()
 
 
+def test_auditor_accepts_prior_event_grounded_by_retrieved_memory() -> None:
+    result = HeuristicReplyGroundingAuditor().audit(
+        "你上次煮的那锅粥，我到现在还记得。",
+        (
+            Message(
+                MessageRole.MEMORY,
+                '# 长期记忆\n["我上次把粥煮糊了。"]',
+            ),
+            Message(MessageRole.USER, "你记得吗？"),
+        ),
+    )
+
+    assert result.risks == ()
+
+
 def test_auditor_does_not_treat_a_question_as_memory_evidence() -> None:
     result = audit(
         "你上次确实把粥煮糊了。",

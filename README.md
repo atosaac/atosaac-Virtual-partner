@@ -9,6 +9,7 @@
 - 使用内置的 atosaac v0.27 角色配置。
 - 从外部 Markdown 文件加载其他角色。
 - 通过可替换的 `ReplyProvider` 使用 mock 或本地 Ollama 模型。
+- 可选启用本地长期记忆，自然捕获少量稳定事实，并查看、删除或清空每一条记录。
 - 用本地、可替换的回合策略区分问候、分享、关系反馈、提问和明确求助，不额外调用
   一次模型。
 
@@ -165,6 +166,90 @@ uv run atosaac-virtual-partner chat \
 终端已经显示 `You:` 提示时，如果粘贴的文字又意外以一个 `You:` 或 `You：` 开头，
 应用会只移除这一个界面前缀；后面的实际内容保持不变。
 
+## 本地长期记忆（按聊天显式启用）
+
+长期记忆不会保存完整聊天。可以先通过 `memory add` 手动写入短记录：
+
+```bash
+uv run atosaac-virtual-partner memory add "我在金店工作。"
+uv run atosaac-virtual-partner memory add "我喜欢蓝色。"
+uv run atosaac-virtual-partner memory list
+```
+
+默认数据库位于：
+
+```text
+~/Library/Application Support/atosaac-virtual-partner/memory.sqlite3
+```
+
+数据库不会进入 Git，新建文件权限限制为仅当前用户读写，但当前版本没有应用层加密。
+不要把密码、密钥或不希望落盘的私人原文保存为记忆。
+
+聊天默认仍不读取长期记忆。显式启用默认数据库：
+
+```bash
+uv run atosaac-virtual-partner chat \
+  --provider ollama \
+  --model qwen3:4b-instruct \
+  --memory
+```
+
+启用后，应用会在一次回复完整成功后，静默识别少量高置信度的稳定陈述，例如“我叫
+……”“我在……工作”“我的爱好是……”“我喜欢/不喜欢……”。普通聊天不会弹出
+确认框；用 `--show-metrics` 调试时才会显示 `记忆新增 1` 或 `记忆更新 1`。同一工作
+地点、名字、爱好或同一对象的偏好使用稳定键更新，因此“喜欢蓝色”改成“不喜欢蓝色”
+不会留下两条互相冲突的自动记录。
+
+包含“今天、现在、可能、是不是”等临时或不确定语气的句子不会自动保存。密码、
+验证码、证件、银行卡、账户、详细地址等敏感模式也会跳过。这里采用的是窄规则，宁可
+漏记也不把整段聊天或模型猜测写入数据库；手动 `memory add` 仍可保存规则没有识别的
+内容。
+
+使用自定义数据库时，`--memory-database` 本身会启用记忆：
+
+```bash
+uv run atosaac-virtual-partner chat \
+  --provider ollama \
+  --model qwen3:4b-instruct \
+  --memory-database /absolute/path/to/memory.sqlite3
+```
+
+当前检索不调用第二个模型，也不需要 embedding（把文字转换成便于计算相似度的
+向量表示）。应用扫描最近 100 条本地记忆，优先选择与当前消息有词汇关联的记录，
+每轮最多注入 4 条且正文合计不超过 800 字符；无关联时通常不注入，只有用户明确
+询问“还记得吗”之类问题时才回退到最近 1 条。记录以数据而不是指令注入，并标注
+`explicit`（手动或明确要求）和 `automatic`（本地规则自动提取）；明确记录优先级
+更高，其中的“我/我的”默认指用户。
+
+如果只想读取已有记忆、暂时关闭静默捕获：
+
+```bash
+uv run atosaac-virtual-partner chat \
+  --provider ollama \
+  --model qwen3:4b-instruct \
+  --memory \
+  --no-auto-memory
+```
+
+按编号删除一条，或在明确确认后清空全部：
+
+```bash
+uv run atosaac-virtual-partner memory forget 2
+uv run atosaac-virtual-partner memory clear --yes
+```
+
+自定义管理数据库时，`--database` 要放在具体动作之前：
+
+```bash
+uv run atosaac-virtual-partner memory \
+  --database /absolute/path/to/memory.sqlite3 \
+  list
+```
+
+`memory list` 会用 `[明确]` 或 `[自动]` 标出来源。静默记忆只处理用户事实，不会让
+角色改写基础性格；性格成长仍走独立、可比较和可回滚的修订流程。后续会增加更丰富的
+事件记忆、过期策略和冲突审查，而不是无限扩张正则规则。
+
 ## 加载其他角色
 
 默认聊天会加载内置的 atosaac v0.27 角色配置。也可以临时加载其他 Markdown
@@ -220,9 +305,10 @@ uv run atosaac-virtual-partner speak "这是一条测试语音。" \
 模型与原始录音只放该项目的本地忽略目录，不提交到 Git。
 
 无论使用内置还是外部角色文件，应用都会额外提供一小段“当前运行事实”。它只声明
-本次真正可用的记忆、工具和称呼偏好。当前版本没有持久记忆或天气工具，因此模型不应
-声称记得未提供的往事、看过天气预报或擅自使用家长称呼。以后接入能力时由应用更新
-事实声明，而不是让角色提示词猜测。
+本次真正可用的记忆、工具和称呼偏好。长期记忆只在 `--memory` 或
+`--memory-database` 启用后声明可用；天气工具仍未接入，因此模型不应声称记得未
+检索到的往事、看过天气预报或擅自使用家长称呼。以后接入能力时由应用更新事实声明，
+而不是让角色提示词猜测。
 
 普通用户输入还会经过一个轻量的本地回合策略。它不会修改用户原话，也不会额外调用
 LLM，而是告诉模型这一轮更像问候、日常分享、直接提问还是明确求助。这样可以降低
@@ -266,7 +352,8 @@ uv run pytest -v
 
 ## 当前限制与下一步
 
-- 对话历史目前只保存在当前进程内，退出后不会持久化。
+- 完整对话历史仍只保存在当前进程内；显式长期记忆可以跨进程保留，但不会自动恢复
+  每句聊天或未保存的旧话题。
 - macOS CLI 支持用 `Control+C` 取消当前流式回复；尚未接入语音或桌面界面的自动打断事件。
 - 尚未接入天气等实时数据工具；未来模型只能通过受权限控制的工具接口发起查询。
 - 角色 v0.27 已声明当前记忆和工具边界，但提示词不能从数学上保证模型永不犯错；
@@ -274,8 +361,8 @@ uv run pytest -v
 - 空闲主动对话必须通过 `--idle-initiative-seconds` 显式启用；当前 CLI 没有安静
   时段、日程感知或桌面通知权限。
 - 回复指标当前只在使用 `--show-metrics` 时显示，不会持久化或保存聊天内容。
-- 尚未实现 ASR、正式 TTS、长期记忆、多模态和 Live2D；当前 `speak` 仅为 TTS 实验
-  基线。
+- 自动记忆目前只覆盖窄范围稳定陈述，尚未实现事件过期、语义检索、会话存档、ASR、
+  正式 TTS、多模态和 Live2D；当前 `speak` 仅为 TTS 实验基线。
 
 ASR（自动语音识别）把语音转换成文字；TTS（文本转语音）把角色回复合成为声音。
 下一阶段将定义会话持久化的保留和删除规则，再决定哪些数据可以进入长期记忆。

@@ -1,6 +1,6 @@
 # Decision 0003: Bound model context by recent complete turns
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-08-18
 
 ## Context
