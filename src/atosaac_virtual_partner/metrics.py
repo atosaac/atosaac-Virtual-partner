@@ -34,6 +34,10 @@ class ReplyMetrics:
     provider: ProviderMetrics | None = None
     local_fallback_used: bool = False
     grounding_risks: tuple[str, ...] = ()
+    memory_created: int = 0
+    memory_updated: int = 0
+    memory_read_failed: bool = False
+    memory_capture_failed: bool = False
 
 
 def format_reply_metrics(metrics: ReplyMetrics) -> str:
@@ -64,4 +68,12 @@ def format_reply_metrics(metrics: ReplyMetrics) -> str:
             risk_labels.get(risk, risk) for risk in metrics.grounding_risks
         )
         parts.append("事实风险 " + "、".join(labels))
+    if metrics.memory_created:
+        parts.append(f"记忆新增 {metrics.memory_created}")
+    if metrics.memory_updated:
+        parts.append(f"记忆更新 {metrics.memory_updated}")
+    if metrics.memory_read_failed:
+        parts.append("记忆读取已回退")
+    if metrics.memory_capture_failed:
+        parts.append("记忆保存失败")
     return "[指标] " + " | ".join(parts)

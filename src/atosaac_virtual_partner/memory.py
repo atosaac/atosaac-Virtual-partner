@@ -3,6 +3,7 @@ import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from enum import StrEnum
 from pathlib import Path
 from typing import Protocol
 
@@ -30,19 +31,52 @@ class DuplicateMemoryError(MemoryStoreError):
         super().__init__(f"Memory already exists as #{existing_id}")
 
 
+class MemorySource(StrEnum):
+    """Describe how a durable memory entered the store."""
+
+    EXPLICIT = "explicit"
+    AUTOMATIC = "automatic"
+
+
+class MemoryWriteAction(StrEnum):
+    """Describe the observable result of one keyed memory write."""
+
+    CREATED = "created"
+    UPDATED = "updated"
+    UNCHANGED = "unchanged"
+
+
 @dataclass(frozen=True, slots=True)
 class MemoryRecord:
-    """One explicit, user-reviewable long-term memory."""
+    """One user-reviewable local long-term memory."""
 
     id: int
     content: str
     created_at: datetime
+    updated_at: datetime
+    source: MemorySource
+    memory_key: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class MemoryWriteResult:
+    """Return one record together with its create/update outcome."""
+
+    record: MemoryRecord
+    action: MemoryWriteAction
 
 
 class MemoryStore(Protocol):
-    """Persist explicit memories behind a replaceable storage boundary."""
+    """Persist local memories behind a replaceable storage boundary."""
 
     def add(self, content: str) -> MemoryRecord: ...
+
+    def remember(
+        self,
+        content: str,
+        memory_key: str,
+        source: MemorySource = MemorySource.AUTOMATIC,
+    ) -> MemoryWriteResult: ...
 
     def list_recent(self, limit: int = 50) -> tuple[MemoryRecord, ...]: ...
 
@@ -77,8 +111,30 @@ def _validate_positive_integer(value: int, field: str, maximum: int) -> None:
         raise ValueError(f"{field} cannot exceed {maximum}")
 
 
+def _normalize_memory_key(memory_key: str) -> str:
+    if not isinstance(memory_key, str):
+        raise ValueError("Memory key must be text")
+    normalized_key = memory_key.strip().casefold()
+    if not normalized_key:
+        raise ValueError("Memory key cannot be empty")
+    if len(normalized_key) > 120:
+        raise ValueError("Memory key cannot exceed 120 characters")
+    if not all(
+        character.isalnum() or character in {":", "_", "-"}
+        for character in normalized_key
+    ):
+        raise ValueError("Memory key contains unsupported characters")
+    return normalized_key
+
+
+def _validate_timestamp(value: datetime) -> datetime:
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError("Memory clock must return a timezone-aware datetime")
+    return value.astimezone(timezone.utc)
+
+
 class SQLiteMemoryStore:
-    """Store explicit memories in a private local SQLite database."""
+    """Store reviewable memories in a private local SQLite database."""
 
     def __init__(
         self,
@@ -89,6 +145,7 @@ class SQLiteMemoryStore:
         self._clock = clock
 
     def _connect(self) -> sqlite3.Connection:
+        connection: sqlite3.Connection | None = None
         try:
             self.database_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
             database_existed = self.database_path.exists()
@@ -101,15 +158,44 @@ class SQLiteMemoryStore:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     content TEXT NOT NULL,
                     normalized_content TEXT NOT NULL UNIQUE,
-                    created_at TEXT NOT NULL
+                    memory_key TEXT,
+                    source TEXT NOT NULL DEFAULT 'explicit',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
                 )
                 """
             )
+            columns = {
+                str(row["name"])
+                for row in connection.execute("PRAGMA table_info(memories)")
+            }
+            if "memory_key" not in columns:
+                connection.execute("ALTER TABLE memories ADD COLUMN memory_key TEXT")
+            if "source" not in columns:
+                connection.execute(
+                    "ALTER TABLE memories ADD COLUMN source TEXT NOT NULL "
+                    "DEFAULT 'explicit'"
+                )
+            if "updated_at" not in columns:
+                connection.execute("ALTER TABLE memories ADD COLUMN updated_at TEXT")
+            connection.execute(
+                "UPDATE memories SET updated_at = created_at WHERE updated_at IS NULL"
+            )
+            connection.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS memories_memory_key_unique
+                ON memories(memory_key)
+                WHERE memory_key IS NOT NULL
+                """
+            )
+            connection.execute("PRAGMA user_version = 2")
             connection.commit()
             if not database_existed:
                 os.chmod(self.database_path, 0o600)
             return connection
         except (OSError, sqlite3.Error) as exc:
+            if connection is not None:
+                connection.close()
             raise MemoryStoreError("Cannot open the local memory database") from exc
 
     @staticmethod
@@ -119,34 +205,53 @@ class SQLiteMemoryStore:
                 id=int(row["id"]),
                 content=str(row["content"]),
                 created_at=datetime.fromisoformat(str(row["created_at"])),
+                updated_at=datetime.fromisoformat(str(row["updated_at"])),
+                source=MemorySource(str(row["source"])),
+                memory_key=(
+                    None if row["memory_key"] is None else str(row["memory_key"])
+                ),
             )
         except (KeyError, TypeError, ValueError) as exc:
             raise MemoryStoreError("Local memory data is invalid") from exc
 
     def add(self, content: str) -> MemoryRecord:
         normalized_content, deduplication_key = _normalize_content(content)
-        created_at = self._clock()
-        if created_at.tzinfo is None or created_at.utcoffset() is None:
-            raise ValueError("Memory clock must return a timezone-aware datetime")
+        created_at = _validate_timestamp(self._clock())
 
         connection = self._connect()
         try:
             cursor = connection.execute(
                 """
-                INSERT INTO memories (content, normalized_content, created_at)
-                VALUES (?, ?, ?)
+                INSERT INTO memories (
+                    content,
+                    normalized_content,
+                    memory_key,
+                    source,
+                    created_at,
+                    updated_at
+                )
+                VALUES (?, ?, NULL, ?, ?, ?)
                 """,
                 (
                     normalized_content,
                     deduplication_key,
-                    created_at.astimezone(timezone.utc).isoformat(),
+                    MemorySource.EXPLICIT.value,
+                    created_at.isoformat(),
+                    created_at.isoformat(),
                 ),
             )
             connection.commit()
             memory_id = cursor.lastrowid
             if memory_id is None:
                 raise MemoryStoreError("Local memory did not return an identifier")
-            return MemoryRecord(memory_id, normalized_content, created_at)
+            return MemoryRecord(
+                id=memory_id,
+                content=normalized_content,
+                created_at=created_at,
+                updated_at=created_at,
+                source=MemorySource.EXPLICIT,
+                memory_key=None,
+            )
         except sqlite3.IntegrityError as exc:
             row = connection.execute(
                 "SELECT id FROM memories WHERE normalized_content = ?",
@@ -160,15 +265,147 @@ class SQLiteMemoryStore:
         finally:
             connection.close()
 
+    def remember(
+        self,
+        content: str,
+        memory_key: str,
+        source: MemorySource = MemorySource.AUTOMATIC,
+    ) -> MemoryWriteResult:
+        normalized_content, deduplication_key = _normalize_content(content)
+        normalized_key = _normalize_memory_key(memory_key)
+        if not isinstance(source, MemorySource):
+            raise ValueError("Memory source is invalid")
+        updated_at = _validate_timestamp(self._clock())
+
+        connection = self._connect()
+        try:
+            existing = connection.execute(
+                """
+                SELECT id, content, memory_key, source, created_at, updated_at,
+                       normalized_content
+                FROM memories
+                WHERE memory_key = ?
+                """,
+                (normalized_key,),
+            ).fetchone()
+            if existing is not None:
+                if str(existing["normalized_content"]) == deduplication_key:
+                    return MemoryWriteResult(
+                        self._record_from_row(existing),
+                        MemoryWriteAction.UNCHANGED,
+                    )
+                connection.execute(
+                    """
+                    UPDATE memories
+                    SET content = ?, normalized_content = ?, source = ?, updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        normalized_content,
+                        deduplication_key,
+                        source.value,
+                        updated_at.isoformat(),
+                        int(existing["id"]),
+                    ),
+                )
+                connection.commit()
+                updated = connection.execute(
+                    """
+                    SELECT id, content, memory_key, source, created_at, updated_at
+                    FROM memories
+                    WHERE id = ?
+                    """,
+                    (int(existing["id"]),),
+                ).fetchone()
+                if updated is None:
+                    raise MemoryStoreError("Updated memory could not be read")
+                return MemoryWriteResult(
+                    self._record_from_row(updated),
+                    MemoryWriteAction.UPDATED,
+                )
+
+            duplicate = connection.execute(
+                """
+                SELECT id, content, memory_key, source, created_at, updated_at
+                FROM memories
+                WHERE normalized_content = ?
+                """,
+                (deduplication_key,),
+            ).fetchone()
+            if duplicate is not None:
+                if duplicate["memory_key"] is None:
+                    connection.execute(
+                        "UPDATE memories SET memory_key = ? WHERE id = ?",
+                        (normalized_key, int(duplicate["id"])),
+                    )
+                    connection.commit()
+                    duplicate = connection.execute(
+                        """
+                        SELECT id, content, memory_key, source, created_at, updated_at
+                        FROM memories
+                        WHERE id = ?
+                        """,
+                        (int(duplicate["id"]),),
+                    ).fetchone()
+                    if duplicate is None:
+                        raise MemoryStoreError("Linked memory could not be read")
+                return MemoryWriteResult(
+                    self._record_from_row(duplicate),
+                    MemoryWriteAction.UNCHANGED,
+                )
+
+            cursor = connection.execute(
+                """
+                INSERT INTO memories (
+                    content,
+                    normalized_content,
+                    memory_key,
+                    source,
+                    created_at,
+                    updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    normalized_content,
+                    deduplication_key,
+                    normalized_key,
+                    source.value,
+                    updated_at.isoformat(),
+                    updated_at.isoformat(),
+                ),
+            )
+            connection.commit()
+            memory_id = cursor.lastrowid
+            if memory_id is None:
+                raise MemoryStoreError("Local memory did not return an identifier")
+            return MemoryWriteResult(
+                MemoryRecord(
+                    id=memory_id,
+                    content=normalized_content,
+                    created_at=updated_at,
+                    updated_at=updated_at,
+                    source=source,
+                    memory_key=normalized_key,
+                ),
+                MemoryWriteAction.CREATED,
+            )
+        except sqlite3.IntegrityError as exc:
+            raise MemoryStoreError("Cannot update the local memory") from exc
+        except sqlite3.Error as exc:
+            raise MemoryStoreError("Cannot update the local memory") from exc
+        finally:
+            connection.close()
+
     def list_recent(self, limit: int = 50) -> tuple[MemoryRecord, ...]:
         _validate_positive_integer(limit, "Memory list limit", MAX_LIST_LIMIT)
         connection = self._connect()
         try:
             rows = connection.execute(
                 """
-                SELECT id, content, created_at
+                SELECT id, content, memory_key, source, created_at, updated_at
                 FROM memories
-                ORDER BY created_at DESC, id DESC
+                ORDER BY updated_at DESC, id DESC
                 LIMIT ?
                 """,
                 (limit,),

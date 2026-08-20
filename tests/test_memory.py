@@ -1,4 +1,5 @@
 import stat
+import sqlite3
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -6,6 +7,8 @@ import pytest
 from atosaac_virtual_partner.memory import (
     DuplicateMemoryError,
     MAX_MEMORY_CHARACTERS,
+    MemorySource,
+    MemoryWriteAction,
     SQLiteMemoryStore,
 )
 from atosaac_virtual_partner.memory_context import BoundedLexicalMemoryContext
@@ -22,6 +25,9 @@ def test_sqlite_memory_store_persists_normalized_explicit_memories(tmp_path) -> 
     assert record.id == 1
     assert record.content == "我在金店工作。"
     assert record.created_at == created_at
+    assert record.updated_at == created_at
+    assert record.source is MemorySource.EXPLICIT
+    assert record.memory_key is None
     assert reopened.list_recent() == (record,)
     assert stat.S_IMODE(database.stat().st_mode) == 0o600
 
@@ -62,6 +68,93 @@ def test_sqlite_memory_store_lists_deletes_and_clears(tmp_path) -> None:
     assert store.clear() == 2
     assert store.list_recent() == ()
     assert first.id != third.id
+
+
+def test_sqlite_memory_store_creates_updates_and_deduplicates_keyed_memory(
+    tmp_path,
+) -> None:
+    times = iter(
+        (
+            datetime(2026, 8, 19, 12, 0, tzinfo=timezone.utc),
+            datetime(2026, 8, 19, 12, 1, tzinfo=timezone.utc),
+            datetime(2026, 8, 19, 12, 2, tzinfo=timezone.utc),
+        )
+    )
+    store = SQLiteMemoryStore(
+        tmp_path / "memory.sqlite3",
+        clock=lambda: next(times),
+    )
+
+    created = store.remember("用户喜欢蓝色。", "profile:preference:blue")
+    unchanged = store.remember(" 用户喜欢蓝色。 ", "profile:preference:blue")
+    updated = store.remember("用户不喜欢蓝色。", "profile:preference:blue")
+
+    assert created.action is MemoryWriteAction.CREATED
+    assert unchanged.action is MemoryWriteAction.UNCHANGED
+    assert unchanged.record == created.record
+    assert updated.action is MemoryWriteAction.UPDATED
+    assert updated.record.id == created.record.id
+    assert updated.record.created_at == created.record.created_at
+    assert updated.record.updated_at > created.record.updated_at
+    assert updated.record.source is MemorySource.AUTOMATIC
+    assert store.list_recent() == (updated.record,)
+
+
+def test_sqlite_memory_store_migrates_v1_records_as_explicit(tmp_path) -> None:
+    database = tmp_path / "memory.sqlite3"
+    created_at = datetime(2026, 8, 19, 12, 0, tzinfo=timezone.utc).isoformat()
+    connection = sqlite3.connect(database)
+    connection.execute(
+        """
+        CREATE TABLE memories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            content TEXT NOT NULL,
+            normalized_content TEXT NOT NULL UNIQUE,
+            created_at TEXT NOT NULL
+        )
+        """
+    )
+    connection.execute(
+        """
+        INSERT INTO memories (content, normalized_content, created_at)
+        VALUES (?, ?, ?)
+        """,
+        ("旧记录", "旧记录", created_at),
+    )
+    connection.commit()
+    connection.close()
+
+    records = SQLiteMemoryStore(database).list_recent()
+
+    assert len(records) == 1
+    assert records[0].source is MemorySource.EXPLICIT
+    assert records[0].memory_key is None
+    assert records[0].updated_at == records[0].created_at
+
+
+def test_keyed_memory_adopts_matching_explicit_record_before_update(tmp_path) -> None:
+    times = iter(
+        (
+            datetime(2026, 8, 19, 12, 0, tzinfo=timezone.utc),
+            datetime(2026, 8, 19, 12, 1, tzinfo=timezone.utc),
+            datetime(2026, 8, 19, 12, 2, tzinfo=timezone.utc),
+        )
+    )
+    store = SQLiteMemoryStore(
+        tmp_path / "memory.sqlite3",
+        clock=lambda: next(times),
+    )
+    explicit = store.add("用户喜欢蓝色。")
+
+    linked = store.remember("用户喜欢蓝色。", "profile:preference:blue")
+    updated = store.remember("用户不喜欢蓝色。", "profile:preference:blue")
+
+    assert linked.action is MemoryWriteAction.UNCHANGED
+    assert linked.record.id == explicit.id
+    assert linked.record.memory_key == "profile:preference:blue"
+    assert linked.record.source is MemorySource.EXPLICIT
+    assert updated.action is MemoryWriteAction.UPDATED
+    assert updated.record.id == explicit.id
 
 
 @pytest.mark.parametrize("limit", (0, -1, True, 1.5))

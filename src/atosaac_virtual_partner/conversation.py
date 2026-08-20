@@ -14,6 +14,8 @@ from .factuality import (
 )
 from .grounding import DEFAULT_RUNTIME_GROUNDING, RuntimeGrounding
 from .message import Message, MessageRole
+from .memory import MemoryStoreError
+from .memory_capture import MemoryCapture, MemoryCaptureResult
 from .memory_context import MemoryContextProvider
 from .metrics import ProviderMetrics, ReplyMetrics
 from .reply import CancellationToken, ReplyProvider
@@ -32,6 +34,7 @@ class ConversationService:
         dialogue_policy: DialoguePolicy = DEFAULT_DIALOGUE_POLICY,
         grounding_auditor: ReplyGroundingAuditor = DEFAULT_REPLY_GROUNDING_AUDITOR,
         memory_context_provider: MemoryContextProvider | None = None,
+        memory_capture: MemoryCapture | None = None,
     ) -> None:
         self._reply_provider = reply_provider
         self._character = character
@@ -40,6 +43,7 @@ class ConversationService:
         self._dialogue_policy = dialogue_policy
         self._grounding_auditor = grounding_auditor
         self._memory_context_provider = memory_context_provider
+        self._memory_capture = memory_capture
         self._clock = clock
         self._history: list[Message] = []
         self._last_metrics: ReplyMetrics | None = None
@@ -102,6 +106,7 @@ class ConversationService:
         first_text_seconds: float | None = None
         provider_metrics: ProviderMetrics | None = None
         local_fallback_used = False
+        memory_read_failed = False
 
         def receive_metrics(metrics: ProviderMetrics) -> None:
             nonlocal provider_metrics
@@ -117,9 +122,15 @@ class ConversationService:
             ),
         ]
         if self._memory_context_provider is not None:
-            memory_instructions = self._memory_context_provider.system_instructions(
-                trigger_message.content
-            )
+            try:
+                memory_instructions = (
+                    self._memory_context_provider.system_instructions(
+                        trigger_message.content
+                    )
+                )
+            except MemoryStoreError:
+                memory_instructions = None
+                memory_read_failed = True
             if memory_instructions is not None:
                 memory_message = Message(MessageRole.MEMORY, memory_instructions)
                 system_context.append(memory_message)
@@ -188,6 +199,17 @@ class ConversationService:
                 Message(MessageRole.ASSISTANT, reply_text),
             )
         )
+        memory_capture_result = MemoryCaptureResult()
+        if (
+            trigger_message.role is MessageRole.USER
+            and self._memory_capture is not None
+        ):
+            try:
+                memory_capture_result = self._memory_capture.capture(
+                    trigger_message.content
+                )
+            except MemoryStoreError:
+                memory_capture_result = MemoryCaptureResult(failed=True)
         self._last_metrics = ReplyMetrics(
             first_text_seconds=first_text_seconds,
             total_seconds=total_seconds,
@@ -196,6 +218,10 @@ class ConversationService:
             grounding_risks=tuple(
                 risk.value for risk in grounding_audit.risks
             ),
+            memory_created=memory_capture_result.created,
+            memory_updated=memory_capture_result.updated,
+            memory_read_failed=memory_read_failed,
+            memory_capture_failed=memory_capture_result.failed,
         )
 
     def respond(

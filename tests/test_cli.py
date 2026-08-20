@@ -17,6 +17,10 @@ from atosaac_virtual_partner.memory_context import (
     BoundedLexicalMemoryContext,
     MemoryContextProvider,
 )
+from atosaac_virtual_partner.memory_capture import (
+    MemoryCapture,
+    StoreBackedMemoryCapture,
+)
 from atosaac_virtual_partner.providers import OllamaReplyProvider
 from atosaac_virtual_partner.reply import MockReplyProvider, ReplyProvider
 from atosaac_virtual_partner.tts import SpeechSynthesizer
@@ -30,6 +34,7 @@ ChatStart = tuple[
     DialoguePolicy,
     RuntimeGrounding,
     MemoryContextProvider | None,
+    MemoryCapture | None,
 ]
 
 
@@ -42,6 +47,7 @@ def capture_chat_start(started: list[ChatStart]) -> Callable[..., None]:
         dialogue_policy: DialoguePolicy,
         runtime_grounding: RuntimeGrounding,
         memory_context_provider: MemoryContextProvider | None,
+        memory_capture: MemoryCapture | None,
     ) -> None:
         started.append(
             (
@@ -52,6 +58,7 @@ def capture_chat_start(started: list[ChatStart]) -> Callable[..., None]:
                 dialogue_policy,
                 runtime_grounding,
                 memory_context_provider,
+                memory_capture,
             )
         )
 
@@ -100,6 +107,7 @@ def test_chat_command_starts_chat(monkeypatch) -> None:
         dialogue_policy,
         runtime_grounding,
         memory_context_provider,
+        memory_capture,
     ) = started[0]
     assert character.name == "atosaac"
     assert character.version == "0.27"
@@ -109,6 +117,7 @@ def test_chat_command_starts_chat(monkeypatch) -> None:
     assert isinstance(dialogue_policy, HeuristicDialoguePolicy)
     assert runtime_grounding.persistent_memory_available is False
     assert memory_context_provider is None
+    assert memory_capture is None
 
 
 def test_chat_command_loads_external_character(monkeypatch, tmp_path) -> None:
@@ -127,6 +136,7 @@ def test_chat_command_loads_external_character(monkeypatch, tmp_path) -> None:
         dialogue_policy,
         _runtime_grounding,
         _memory_context_provider,
+        _memory_capture,
     ) = started[0]
     assert character.name == "Nova"
     assert character.version == "1.2"
@@ -164,6 +174,7 @@ def test_chat_command_builds_ollama_provider(monkeypatch) -> None:
         dialogue_policy,
         _runtime_grounding,
         _memory_context_provider,
+        _memory_capture,
     ) = started[0]
     assert isinstance(reply_provider, OllamaReplyProvider)
     assert reply_provider.model == "qwen3:4b-instruct"
@@ -196,8 +207,34 @@ def test_chat_command_enables_explicit_memory_database(monkeypatch, tmp_path) ->
 
     runtime_grounding = started[0][5]
     memory_context_provider = started[0][6]
+    memory_capture = started[0][7]
     assert runtime_grounding.persistent_memory_available is True
     assert isinstance(memory_context_provider, BoundedLexicalMemoryContext)
+    assert isinstance(memory_capture, StoreBackedMemoryCapture)
+
+
+def test_chat_command_can_disable_automatic_memory(monkeypatch, tmp_path) -> None:
+    started: list[ChatStart] = []
+    monkeypatch.setattr(cli, "run_chat", capture_chat_start(started))
+
+    cli.main(
+        [
+            "chat",
+            "--memory-database",
+            str(tmp_path / "memory.sqlite3"),
+            "--no-auto-memory",
+        ]
+    )
+
+    assert isinstance(started[0][6], BoundedLexicalMemoryContext)
+    assert started[0][7] is None
+
+
+def test_chat_command_rejects_auto_memory_switch_without_memory(capsys) -> None:
+    with pytest.raises(SystemExit):
+        cli.main(["chat", "--no-auto-memory"])
+
+    assert "requires --memory" in capsys.readouterr().err
 
 
 def test_memory_commands_add_list_forget_and_clear(tmp_path, capsys) -> None:
@@ -208,7 +245,7 @@ def test_memory_commands_add_list_forget_and_clear(tmp_path, capsys) -> None:
     assert "已保存记忆 #1" in capsys.readouterr().out
 
     cli.main([*base_args, "list"])
-    assert "#1 我在金店工作。" in capsys.readouterr().out
+    assert "#1 [明确] 我在金店工作。" in capsys.readouterr().out
 
     cli.main([*base_args, "forget", "1"])
     assert "已删除记忆 #1" in capsys.readouterr().out

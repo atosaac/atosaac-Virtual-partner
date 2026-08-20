@@ -15,10 +15,12 @@ from .initiative import IdleInitiativePolicy
 from .memory import (
     DEFAULT_MEMORY_DATABASE_PATH,
     DuplicateMemoryError,
+    MemorySource,
     MemoryStore,
     MemoryStoreError,
     SQLiteMemoryStore,
 )
+from .memory_capture import MemoryCapture, StoreBackedMemoryCapture
 from .memory_context import BoundedLexicalMemoryContext, MemoryContextProvider
 from .providers import DEFAULT_OLLAMA_URL, OllamaReplyProvider
 from .reply import MockReplyProvider, ReplyProvider
@@ -101,16 +103,21 @@ def build_parser() -> argparse.ArgumentParser:
     chat_parser.add_argument(
         "--memory",
         action="store_true",
-        help="Enable explicit long-term memory from the default local database.",
+        help="Enable local long-term memory from the default database.",
     )
     chat_parser.add_argument(
         "--memory-database",
         type=Path,
-        help="Enable explicit long-term memory from a custom SQLite database.",
+        help="Enable local long-term memory from a custom SQLite database.",
+    )
+    chat_parser.add_argument(
+        "--no-auto-memory",
+        action="store_true",
+        help="Read long-term memory without silently capturing stable facts.",
     )
     memory_parser = subcommands.add_parser(
         "memory",
-        help="Manage explicit local long-term memories.",
+        help="Manage local long-term memories.",
     )
     memory_parser.add_argument(
         "--database",
@@ -129,7 +136,7 @@ def build_parser() -> argparse.ArgumentParser:
     memory_add_parser.add_argument("content", help="Memory text to save.")
     memory_list_parser = memory_actions.add_parser(
         "list",
-        help="List recent explicit memories.",
+        help="List recent memories.",
     )
     memory_list_parser.add_argument(
         "--limit",
@@ -144,7 +151,7 @@ def build_parser() -> argparse.ArgumentParser:
     memory_forget_parser.add_argument("memory_id", type=int)
     memory_clear_parser = memory_actions.add_parser(
         "clear",
-        help="Delete every explicit memory.",
+        help="Delete every memory.",
     )
     memory_clear_parser.add_argument(
         "--yes",
@@ -206,7 +213,7 @@ def build_dialogue_policy(policy_name: str) -> DialoguePolicy:
 
 
 def build_memory_store(database_path: Path) -> MemoryStore:
-    """Build local explicit-memory storage behind a replaceable protocol."""
+    """Build local memory storage behind a replaceable protocol."""
     return SQLiteMemoryStore(database_path)
 
 
@@ -222,7 +229,10 @@ def _run_memory_command(args: argparse.Namespace) -> None:
             print("还没有已保存的记忆。")
             return
         for record in records:
-            print(f"#{record.id} {record.content}")
+            source_label = (
+                "明确" if record.source is MemorySource.EXPLICIT else "自动"
+            )
+            print(f"#{record.id} [{source_label}] {record.content}")
         return
     if args.memory_action == "forget":
         if store.delete(args.memory_id):
@@ -285,12 +295,19 @@ def main(argv: Sequence[str] | None = None) -> None:
             if memory_database is None and args.memory:
                 memory_database = DEFAULT_MEMORY_DATABASE_PATH
             memory_context_provider: MemoryContextProvider | None = None
+            memory_capture: MemoryCapture | None = None
             runtime_grounding: RuntimeGrounding = DEFAULT_RUNTIME_GROUNDING
             if memory_database is not None:
                 memory_store = build_memory_store(memory_database)
                 memory_context_provider = BoundedLexicalMemoryContext(memory_store)
+                if not args.no_auto_memory:
+                    memory_capture = StoreBackedMemoryCapture(memory_store)
                 runtime_grounding = RuntimeGrounding(
                     persistent_memory_available=True
+                )
+            elif args.no_auto_memory:
+                raise ValueError(
+                    "--no-auto-memory requires --memory or --memory-database"
                 )
         except (CharacterLoadError, MemoryStoreError, ValueError) as exc:
             parser.error(str(exc))
@@ -302,4 +319,5 @@ def main(argv: Sequence[str] | None = None) -> None:
             dialogue_policy=dialogue_policy,
             runtime_grounding=runtime_grounding,
             memory_context_provider=memory_context_provider,
+            memory_capture=memory_capture,
         )

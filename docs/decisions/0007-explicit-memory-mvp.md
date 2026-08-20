@@ -66,3 +66,7 @@ records count as persistent evidence.
 - The next layer should propose memory candidates in chat and require explicit
   confirmation before saving; personality revisions remain a separate reviewed
   workflow.
+
+Decision 0008 later replaces the confirmation-per-fact interaction with narrow,
+silent local capture while retaining inspection, deletion, and personality
+separation.

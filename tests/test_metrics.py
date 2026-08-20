@@ -66,3 +66,21 @@ def test_format_reply_metrics_reports_content_free_grounding_risks() -> None:
     assert summary == (
         "[指标] 首字 0.30s | 总耗时 0.80s | 事实风险 记忆、感知、自身经历"
     )
+
+
+def test_format_reply_metrics_reports_memory_lifecycle_without_content() -> None:
+    summary = format_reply_metrics(
+        ReplyMetrics(
+            first_text_seconds=0.2,
+            total_seconds=0.7,
+            memory_created=1,
+            memory_updated=2,
+            memory_read_failed=True,
+            memory_capture_failed=True,
+        )
+    )
+
+    assert summary == (
+        "[指标] 首字 0.20s | 总耗时 0.70s | 记忆新增 1 | 记忆更新 2 | "
+        "记忆读取已回退 | 记忆保存失败"
+    )

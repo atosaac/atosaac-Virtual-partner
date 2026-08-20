@@ -13,6 +13,7 @@ from .dialogue_policy import DEFAULT_DIALOGUE_POLICY, DialoguePolicy
 from .grounding import DEFAULT_RUNTIME_GROUNDING, RuntimeGrounding
 from .initiative import IdleInitiativePolicy
 from .memory import MemoryStoreError
+from .memory_capture import MemoryCapture
 from .memory_context import MemoryContextProvider
 from .metrics import format_reply_metrics
 from .reply import (
@@ -72,6 +73,7 @@ def run_chat(
     dialogue_policy: DialoguePolicy = DEFAULT_DIALOGUE_POLICY,
     runtime_grounding: RuntimeGrounding = DEFAULT_RUNTIME_GROUNDING,
     memory_context_provider: MemoryContextProvider | None = None,
+    memory_capture: MemoryCapture | None = None,
 ) -> None:
     """Run an interactive terminal chat session."""
     read = input if input_func is None else input_func
@@ -96,6 +98,7 @@ def run_chat(
         dialogue_policy=dialogue_policy,
         runtime_grounding=runtime_grounding,
         memory_context_provider=memory_context_provider,
+        memory_capture=memory_capture,
     )
 
     write(f"{character.name}: {WELCOME_TEXT}")
