@@ -9,7 +9,7 @@ from .dialogue_policy import (
     HeuristicDialoguePolicy,
     PassthroughDialoguePolicy,
 )
-from .grounding import DEFAULT_RUNTIME_GROUNDING, RuntimeGrounding
+from .grounding import RuntimeGrounding
 from .health import build_health_report
 from .initiative import IdleInitiativePolicy
 from .memory import (
@@ -31,6 +31,9 @@ from .tts import (
     SpeechSynthesisError,
     SpeechSynthesizer,
 )
+from .tool_context import ToolContextProvider, WeatherToolContextProvider
+from .tooling import ToolGateway, ToolPermission, ToolRegistry
+from .weather import build_open_meteo_weather_adapter
 
 
 PROVIDER_NAMES = ("mock", "ollama")
@@ -114,6 +117,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-auto-memory",
         action="store_true",
         help="Read long-term memory without silently capturing stable facts.",
+    )
+    chat_parser.add_argument(
+        "--weather-city",
+        help=(
+            "Enable read-only weather lookup for this configured city. "
+            "The city is sent to Open-Meteo only for explicit weather queries."
+        ),
     )
     memory_parser = subcommands.add_parser(
         "memory",
@@ -296,19 +306,32 @@ def main(argv: Sequence[str] | None = None) -> None:
                 memory_database = DEFAULT_MEMORY_DATABASE_PATH
             memory_context_provider: MemoryContextProvider | None = None
             memory_capture: MemoryCapture | None = None
-            runtime_grounding: RuntimeGrounding = DEFAULT_RUNTIME_GROUNDING
             if memory_database is not None:
                 memory_store = build_memory_store(memory_database)
                 memory_context_provider = BoundedLexicalMemoryContext(memory_store)
                 if not args.no_auto_memory:
                     memory_capture = StoreBackedMemoryCapture(memory_store)
-                runtime_grounding = RuntimeGrounding(
-                    persistent_memory_available=True
-                )
             elif args.no_auto_memory:
                 raise ValueError(
                     "--no-auto-memory requires --memory or --memory-database"
                 )
+            tool_context_provider: ToolContextProvider | None = None
+            enabled_tools: tuple[str, ...] = ()
+            if args.weather_city is not None:
+                weather_adapter = build_open_meteo_weather_adapter()
+                tool_gateway = ToolGateway(
+                    ToolRegistry((weather_adapter,)),
+                    allowed_permissions=(ToolPermission.READ_ONLY,),
+                )
+                tool_context_provider = WeatherToolContextProvider(
+                    tool_gateway,
+                    args.weather_city,
+                )
+                enabled_tools = (weather_adapter.descriptor.name,)
+            runtime_grounding = RuntimeGrounding(
+                persistent_memory_available=memory_database is not None,
+                enabled_tools=enabled_tools,
+            )
         except (CharacterLoadError, MemoryStoreError, ValueError) as exc:
             parser.error(str(exc))
         run_chat(
@@ -320,4 +343,5 @@ def main(argv: Sequence[str] | None = None) -> None:
             runtime_grounding=runtime_grounding,
             memory_context_provider=memory_context_provider,
             memory_capture=memory_capture,
+            tool_context_provider=tool_context_provider,
         )

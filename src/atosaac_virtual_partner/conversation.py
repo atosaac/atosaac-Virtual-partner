@@ -19,6 +19,7 @@ from .memory_capture import MemoryCapture, MemoryCaptureResult
 from .memory_context import MemoryContextProvider
 from .metrics import ProviderMetrics, ReplyMetrics
 from .reply import CancellationToken, ReplyProvider
+from .tool_context import ToolContextProvider
 
 
 class ConversationService:
@@ -35,6 +36,7 @@ class ConversationService:
         grounding_auditor: ReplyGroundingAuditor = DEFAULT_REPLY_GROUNDING_AUDITOR,
         memory_context_provider: MemoryContextProvider | None = None,
         memory_capture: MemoryCapture | None = None,
+        tool_context_provider: ToolContextProvider | None = None,
     ) -> None:
         self._reply_provider = reply_provider
         self._character = character
@@ -44,6 +46,7 @@ class ConversationService:
         self._grounding_auditor = grounding_auditor
         self._memory_context_provider = memory_context_provider
         self._memory_capture = memory_capture
+        self._tool_context_provider = tool_context_provider
         self._clock = clock
         self._history: list[Message] = []
         self._last_metrics: ReplyMetrics | None = None
@@ -107,6 +110,7 @@ class ConversationService:
         provider_metrics: ProviderMetrics | None = None
         local_fallback_used = False
         memory_read_failed = False
+        tool_metrics = None
 
         def receive_metrics(metrics: ProviderMetrics) -> None:
             nonlocal provider_metrics
@@ -134,6 +138,23 @@ class ConversationService:
             if memory_instructions is not None:
                 memory_message = Message(MessageRole.MEMORY, memory_instructions)
                 system_context.append(memory_message)
+        tool_message: Message | None = None
+        if (
+            trigger_message.role is MessageRole.USER
+            and self._tool_context_provider is not None
+        ):
+            token.raise_if_cancelled()
+            tool_context = self._tool_context_provider.context_for(
+                trigger_message.content
+            )
+            token.raise_if_cancelled()
+            if tool_context is not None:
+                tool_metrics = tool_context.metrics
+                tool_message = Message(
+                    MessageRole.TOOL,
+                    tool_context.system_instructions,
+                )
+                system_context.append(tool_message)
         if dialogue_guidance is not None:
             system_context.append(
                 Message(
@@ -187,6 +208,8 @@ class ConversationService:
         grounding_evidence = [*selected_history]
         if memory_message is not None:
             grounding_evidence.append(memory_message)
+        if tool_message is not None:
+            grounding_evidence.append(tool_message)
         grounding_evidence.append(trigger_message)
         grounding_audit = self._grounding_auditor.audit(
             reply_text,
@@ -214,6 +237,7 @@ class ConversationService:
             first_text_seconds=first_text_seconds,
             total_seconds=total_seconds,
             provider=provider_metrics,
+            tool=tool_metrics,
             local_fallback_used=local_fallback_used,
             grounding_risks=tuple(
                 risk.value for risk in grounding_audit.risks

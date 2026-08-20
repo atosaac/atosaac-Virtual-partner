@@ -94,6 +94,11 @@ atosaac-virtual-partner speak
   endpoints, a shared request timeout, a ten-minute in-memory cache, and an
   explicitly stale offline fallback capped at six hours. Chat integration is the
   next layer; the adapter alone grants no model network access.
+- Chat can opt into weather with a configured city. A replaceable local policy
+  calls the gateway only for messages containing both a weather topic and lookup
+  intent, then injects a dedicated ephemeral tool message for the current reply.
+  Success and failure are both structured; tool data never enters history or
+  automatic memory, and no second LLM call is used for planning.
 - An **experimental TTS baseline** now exposes a `speak` CLI command through a
   replaceable `SpeechSynthesizer` protocol and macOS `say`. It only validates the
   text-to-audio boundary: it does not train or clone a voice, does not speak chat

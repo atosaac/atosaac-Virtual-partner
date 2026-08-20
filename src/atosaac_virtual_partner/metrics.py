@@ -1,3 +1,4 @@
+import math
 from dataclasses import dataclass
 
 
@@ -26,12 +27,37 @@ class ProviderMetrics:
 
 
 @dataclass(frozen=True, slots=True)
+class ToolMetrics:
+    """Record content-free timing and cache state for one tool call."""
+
+    tool_name: str
+    elapsed_seconds: float
+    succeeded: bool
+    failure_code: str | None = None
+    from_cache: bool = False
+    stale: bool = False
+
+    def __post_init__(self) -> None:
+        if not self.tool_name.strip():
+            raise ValueError("Tool metric name cannot be empty")
+        if not math.isfinite(self.elapsed_seconds) or self.elapsed_seconds < 0:
+            raise ValueError("Tool metric elapsed time must be non-negative")
+        if self.succeeded == (self.failure_code is not None):
+            raise ValueError("Tool metric success and failure state is inconsistent")
+        if not self.succeeded and (self.from_cache or self.stale):
+            raise ValueError("Failed tool metrics cannot report cache success")
+        if self.stale and not self.from_cache:
+            raise ValueError("Stale tool metrics must come from cache")
+
+
+@dataclass(frozen=True, slots=True)
 class ReplyMetrics:
     """End-to-end metrics for one successfully completed reply."""
 
     first_text_seconds: float
     total_seconds: float
     provider: ProviderMetrics | None = None
+    tool: ToolMetrics | None = None
     local_fallback_used: bool = False
     grounding_risks: tuple[str, ...] = ()
     memory_created: int = 0
@@ -55,6 +81,21 @@ def format_reply_metrics(metrics: ReplyMetrics) -> str:
         speed = provider.output_tokens_per_second
         if speed is not None:
             parts.append(f"生成 {speed:.1f} tokens/s")
+    tool = metrics.tool
+    if tool is not None:
+        if tool.succeeded:
+            cache_label = ""
+            if tool.stale:
+                cache_label = " 过期缓存"
+            elif tool.from_cache:
+                cache_label = " 缓存"
+            parts.append(
+                f"工具 {tool.tool_name} {tool.elapsed_seconds:.2f}s{cache_label}"
+            )
+        else:
+            parts.append(
+                f"工具 {tool.tool_name} 失败 {tool.failure_code or 'unknown'}"
+            )
     if metrics.local_fallback_used:
         parts.append("已用本地回退")
     if metrics.grounding_risks:

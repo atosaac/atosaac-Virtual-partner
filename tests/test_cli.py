@@ -24,6 +24,10 @@ from atosaac_virtual_partner.memory_capture import (
 from atosaac_virtual_partner.providers import OllamaReplyProvider
 from atosaac_virtual_partner.reply import MockReplyProvider, ReplyProvider
 from atosaac_virtual_partner.tts import SpeechSynthesizer
+from atosaac_virtual_partner.tool_context import (
+    ToolContextProvider,
+    WeatherToolContextProvider,
+)
 
 
 ChatStart = tuple[
@@ -35,6 +39,7 @@ ChatStart = tuple[
     RuntimeGrounding,
     MemoryContextProvider | None,
     MemoryCapture | None,
+    ToolContextProvider | None,
 ]
 
 
@@ -48,6 +53,7 @@ def capture_chat_start(started: list[ChatStart]) -> Callable[..., None]:
         runtime_grounding: RuntimeGrounding,
         memory_context_provider: MemoryContextProvider | None,
         memory_capture: MemoryCapture | None,
+        tool_context_provider: ToolContextProvider | None,
     ) -> None:
         started.append(
             (
@@ -59,6 +65,7 @@ def capture_chat_start(started: list[ChatStart]) -> Callable[..., None]:
                 runtime_grounding,
                 memory_context_provider,
                 memory_capture,
+                tool_context_provider,
             )
         )
 
@@ -108,6 +115,7 @@ def test_chat_command_starts_chat(monkeypatch) -> None:
         runtime_grounding,
         memory_context_provider,
         memory_capture,
+        tool_context_provider,
     ) = started[0]
     assert character.name == "atosaac"
     assert character.version == "0.27"
@@ -118,6 +126,7 @@ def test_chat_command_starts_chat(monkeypatch) -> None:
     assert runtime_grounding.persistent_memory_available is False
     assert memory_context_provider is None
     assert memory_capture is None
+    assert tool_context_provider is None
 
 
 def test_chat_command_loads_external_character(monkeypatch, tmp_path) -> None:
@@ -137,6 +146,7 @@ def test_chat_command_loads_external_character(monkeypatch, tmp_path) -> None:
         _runtime_grounding,
         _memory_context_provider,
         _memory_capture,
+        _tool_context_provider,
     ) = started[0]
     assert character.name == "Nova"
     assert character.version == "1.2"
@@ -175,6 +185,7 @@ def test_chat_command_builds_ollama_provider(monkeypatch) -> None:
         _runtime_grounding,
         _memory_context_provider,
         _memory_capture,
+        _tool_context_provider,
     ) = started[0]
     assert isinstance(reply_provider, OllamaReplyProvider)
     assert reply_provider.model == "qwen3:4b-instruct"
@@ -211,6 +222,26 @@ def test_chat_command_enables_explicit_memory_database(monkeypatch, tmp_path) ->
     assert runtime_grounding.persistent_memory_available is True
     assert isinstance(memory_context_provider, BoundedLexicalMemoryContext)
     assert isinstance(memory_capture, StoreBackedMemoryCapture)
+
+
+def test_chat_command_enables_weather_for_one_configured_city(monkeypatch) -> None:
+    started: list[ChatStart] = []
+    monkeypatch.setattr(cli, "run_chat", capture_chat_start(started))
+
+    cli.main(["chat", "--weather-city", "上海"])
+
+    runtime_grounding = started[0][5]
+    tool_context_provider = started[0][8]
+    assert runtime_grounding.enabled_tools == ("weather.current",)
+    assert isinstance(tool_context_provider, WeatherToolContextProvider)
+    assert tool_context_provider.city == "上海"
+
+
+def test_chat_command_rejects_invalid_weather_city(capsys) -> None:
+    with pytest.raises(SystemExit):
+        cli.main(["chat", "--weather-city", "上"])
+
+    assert "Weather city" in capsys.readouterr().err
 
 
 def test_chat_command_can_disable_automatic_memory(monkeypatch, tmp_path) -> None:

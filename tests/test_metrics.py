@@ -1,6 +1,9 @@
+import pytest
+
 from atosaac_virtual_partner.metrics import (
     ProviderMetrics,
     ReplyMetrics,
+    ToolMetrics,
     format_reply_metrics,
 )
 
@@ -84,3 +87,60 @@ def test_format_reply_metrics_reports_memory_lifecycle_without_content() -> None
         "[指标] 首字 0.20s | 总耗时 0.70s | 记忆新增 1 | 记忆更新 2 | "
         "记忆读取已回退 | 记忆保存失败"
     )
+
+
+@pytest.mark.parametrize(
+    ("tool", "expected_suffix"),
+    (
+        (
+            ToolMetrics("weather.current", 0.25, True),
+            "工具 weather.current 0.25s",
+        ),
+        (
+            ToolMetrics("weather.current", 0.0, True, from_cache=True),
+            "工具 weather.current 0.00s 缓存",
+        ),
+        (
+            ToolMetrics(
+                "weather.current",
+                0.1,
+                True,
+                from_cache=True,
+                stale=True,
+            ),
+            "工具 weather.current 0.10s 过期缓存",
+        ),
+        (
+            ToolMetrics(
+                "weather.current",
+                0.1,
+                False,
+                failure_code="timeout",
+            ),
+            "工具 weather.current 失败 timeout",
+        ),
+    ),
+)
+def test_format_reply_metrics_reports_content_free_tool_outcomes(
+    tool: ToolMetrics,
+    expected_suffix: str,
+) -> None:
+    summary = format_reply_metrics(
+        ReplyMetrics(first_text_seconds=0.2, total_seconds=0.7, tool=tool)
+    )
+
+    assert summary.endswith(expected_suffix)
+
+
+@pytest.mark.parametrize(
+    "tool_factory",
+    (
+        lambda: ToolMetrics("weather.current", -0.1, True),
+        lambda: ToolMetrics("weather.current", 0.1, True, failure_code="timeout"),
+        lambda: ToolMetrics("weather.current", 0.1, False),
+        lambda: ToolMetrics("weather.current", 0.1, True, stale=True),
+    ),
+)
+def test_tool_metrics_rejects_inconsistent_states(tool_factory) -> None:
+    with pytest.raises(ValueError):
+        tool_factory()
