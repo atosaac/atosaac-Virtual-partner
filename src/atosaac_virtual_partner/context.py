@@ -43,10 +43,15 @@ class RecentTurnsContextPolicy:
             raise ValueError(
                 "Conversation history must start with a user message or event"
             )
-        context_only_roles = {MessageRole.SYSTEM, MessageRole.MEMORY}
+        context_only_roles = {
+            MessageRole.SYSTEM,
+            MessageRole.MEMORY,
+            MessageRole.TOOL,
+        }
         if any(message.role in context_only_roles for message in messages):
             raise ValueError(
-                "Conversation history cannot contain system messages or memory messages"
+                "Conversation history cannot contain system messages, "
+                "memory messages, or tool messages"
             )
 
         turn_starts = tuple(

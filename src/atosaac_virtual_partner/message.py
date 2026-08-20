@@ -5,6 +5,7 @@ from enum import StrEnum
 class MessageRole(StrEnum):
     SYSTEM = "system"
     MEMORY = "memory"
+    TOOL = "tool"
     USER = "user"
     ASSISTANT = "assistant"
     EVENT = "event"

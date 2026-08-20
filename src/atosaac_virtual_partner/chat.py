@@ -23,6 +23,7 @@ from .reply import (
     ReplyProvider,
     ReplyProviderError,
 )
+from .tool_context import ToolContextProvider
 
 
 EXIT_COMMANDS = frozenset({"exit", "quit", "退出"})
@@ -74,6 +75,7 @@ def run_chat(
     runtime_grounding: RuntimeGrounding = DEFAULT_RUNTIME_GROUNDING,
     memory_context_provider: MemoryContextProvider | None = None,
     memory_capture: MemoryCapture | None = None,
+    tool_context_provider: ToolContextProvider | None = None,
 ) -> None:
     """Run an interactive terminal chat session."""
     read = input if input_func is None else input_func
@@ -99,6 +101,7 @@ def run_chat(
         runtime_grounding=runtime_grounding,
         memory_context_provider=memory_context_provider,
         memory_capture=memory_capture,
+        tool_context_provider=tool_context_provider,
     )
 
     write(f"{character.name}: {WELCOME_TEXT}")

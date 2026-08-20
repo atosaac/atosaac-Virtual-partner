@@ -80,6 +80,17 @@ def test_recent_turns_policy_rejects_memory_messages_in_history() -> None:
         RecentTurnsContextPolicy().select_history(invalid_history)
 
 
+def test_recent_turns_policy_rejects_tool_messages_in_history() -> None:
+    invalid_history = (
+        Message(MessageRole.USER, "天气怎么样？"),
+        Message(MessageRole.TOOL, '{"temperature_c":28}'),
+        Message(MessageRole.ASSISTANT, "有点热。"),
+    )
+
+    with pytest.raises(ValueError, match="tool messages"):
+        RecentTurnsContextPolicy().select_history(invalid_history)
+
+
 def test_recent_turns_policy_treats_application_event_as_a_turn_start() -> None:
     history = (
         Message(MessageRole.USER, "user 1"),

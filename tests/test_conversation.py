@@ -16,13 +16,14 @@ from atosaac_virtual_partner.grounding import (
 from atosaac_virtual_partner.message import Message, MessageRole
 from atosaac_virtual_partner.memory import MemoryStoreError
 from atosaac_virtual_partner.memory_capture import MemoryCaptureResult
-from atosaac_virtual_partner.metrics import ProviderMetrics, ReplyMetrics
+from atosaac_virtual_partner.metrics import ProviderMetrics, ReplyMetrics, ToolMetrics
 from atosaac_virtual_partner.reply import (
     CancellationToken,
     MetricsCallback,
     ReplyCancelled,
     ReplyProviderError,
 )
+from atosaac_virtual_partner.tool_context import ToolContext
 
 
 class RecordingReplyProvider:
@@ -377,6 +378,69 @@ def test_conversation_injects_memory_as_system_data_without_persisting_it() -> N
         Message(MessageRole.USER, "今天上班。"),
         Message(MessageRole.ASSISTANT, "店里应该挺忙。"),
     )
+
+
+def test_conversation_injects_ephemeral_tool_result_and_records_metrics() -> None:
+    tool_metrics = ToolMetrics(
+        tool_name="weather.current",
+        elapsed_seconds=0.25,
+        succeeded=True,
+    )
+
+    class StaticToolContext:
+        def context_for(self, user_text: str) -> ToolContext:
+            assert user_text == "今天会下雨吗？"
+            return ToolContext(
+                '# 当前回合工具结果\n{"condition":"阵雨"}',
+                tool_metrics,
+            )
+
+    grounding = RuntimeGrounding(enabled_tools=("weather.current",))
+    provider = RecordingReplyProvider((("可能有阵雨，带把伞吧。",),))
+    conversation = ConversationService(
+        provider,
+        build_character(),
+        runtime_grounding=grounding,
+        tool_context_provider=StaticToolContext(),
+    )
+
+    conversation.respond("今天会下雨吗？")
+
+    assert provider.contexts[0][:4] == (
+        Message(MessageRole.SYSTEM, "Be independent and playful."),
+        Message(MessageRole.SYSTEM, grounding.system_instructions()),
+        Message(
+            MessageRole.TOOL,
+            '# 当前回合工具结果\n{"condition":"阵雨"}',
+        ),
+        Message(
+            MessageRole.SYSTEM,
+            DEFAULT_DIALOGUE_POLICY.guide(
+                "今天会下雨吗？",
+                (),
+            ).system_instructions,
+        ),
+    )
+    assert all(
+        message.role is not MessageRole.TOOL for message in conversation.history
+    )
+    assert conversation.last_metrics is not None
+    assert conversation.last_metrics.tool == tool_metrics
+
+
+def test_conversation_does_not_run_user_tool_planner_for_initiative() -> None:
+    class UnexpectedToolContext:
+        def context_for(self, _user_text: str) -> ToolContext:
+            raise AssertionError("initiative must not trigger a user weather query")
+
+    provider = RecordingReplyProvider((("主动问候",),))
+    conversation = ConversationService(
+        provider,
+        build_character(),
+        tool_context_provider=UnexpectedToolContext(),
+    )
+
+    assert conversation.initiate("idle event") == "主动问候"
 
 
 def test_conversation_captures_memory_only_after_completed_user_turn() -> None:
